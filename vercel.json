@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "regions": ["bom1"],
+  "builds": [
+    {
+      "src": "server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["public/**", "data/**", "node_modules/socket.io/client-dist/**"]
+      }
+    }
+  ],
+  "routes": [{ "src": "/(.*)", "dest": "server.js" }],
+  "crons": [{ "path": "/cron/daily-summary", "schedule": "30 17 * * *" }]
+}

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#7c2d12">
+  <title>Order at your table</title>
+  <link rel="stylesheet" href="order.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div>
+        <h1 id="restaurantName">Loading…</h1>
+        <p id="tagline" class="tagline"></p>
+      </div>
+      <span class="table-chip" id="tableChip">Table –</span>
+    </div>
+  </header>
+
+  <main id="menuView">
+    <!-- Table taken by another party / invalid table -->
+    <section class="notice" id="tableNotice" hidden>
+      <strong id="tableNoticeTitle"></strong>
+      <p id="tableNoticeText"></p>
+    </section>
+
+    <!-- AI quick order -->
+    <section class="ai-box">
+      <label for="aiInput" class="ai-label">
+        <span class="spark">✨</span> Just type your order
+      </label>
+      <div class="ai-row">
+        <input id="aiInput" type="text" autocomplete="off" maxlength="300"
+          placeholder="e.g. 2 butter naan, dal makhani and a mango lassi">
+        <button id="aiBtn" class="btn-primary">Add</button>
+      </div>
+      <p id="aiResult" class="ai-result" hidden></p>
+    </section>
+
+    <!-- Back to the order in progress (after "Order more") -->
+    <button class="my-order-bar" id="myOrderBar" hidden>
+      <span>🧾 Your order <strong id="myOrderStatus"></strong></span>
+      <span>Track →</span>
+    </button>
+
+    <div class="menu-tools">
+      <label class="veg-toggle"><input type="checkbox" id="vegOnly"> <span class="diet veg"></span> Veg only</label>
+    </div>
+    <nav class="cat-tabs" id="catTabs" aria-label="Menu categories"></nav>
+    <div id="menuList" class="menu-list"></div>
+
+    <section class="service-row" id="menuServiceRow">
+      <p>Need something?</p>
+      <div class="service-buttons">
+        <button class="btn-ghost" data-waiter="water">💧 Water</button>
+        <button class="btn-ghost" data-waiter="help">🙋 Call waiter</button>
+        <button class="btn-ghost" data-waiter="bill">🧾 Ask for bill</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Tracking view -->
+  <main id="trackView" hidden>
+    <section class="track-card">
+      <p class="track-eyebrow">Order <span id="trackId"></span></p>
+      <h2 id="trackHeadline">Sent to the kitchen</h2>
+      <ol class="timeline" id="timeline">
+        <li data-step="pending">Received</li>
+        <li data-step="cooking">Cooking</li>
+        <li data-step="ready">Ready</li>
+        <li data-step="served">Served</li>
+      </ol>
+      <ul class="track-items" id="trackItems"></ul>
+      <p class="track-removed" id="trackRemoved" hidden></p>
+      <div class="track-total"><span>Total (incl. tax)</span><strong id="trackTotal"></strong></div>
+      <div class="track-actions">
+        <button class="btn-ghost danger" id="cancelBtn" hidden>Cancel order</button>
+        <button class="btn-primary" id="orderMoreBtn">Order more</button>
+      </div>
+    </section>
+    <section class="invite-card" id="inviteCard" hidden>
+      <div>
+        <strong>👥 Ordering with friends?</strong>
+        <p>This table is linked to your phone. Share this link so others at your table can order too.</p>
+      </div>
+      <button class="btn-ghost" id="inviteBtn">Share table link</button>
+      <input class="invite-link" id="inviteLink" readonly hidden aria-label="Table invite link">
+    </section>
+    <section class="service-row">
+      <p>Need something?</p>
+      <div class="service-buttons">
+        <button class="btn-ghost" data-waiter="water">💧 Water</button>
+        <button class="btn-ghost" data-waiter="help">🙋 Call waiter</button>
+        <button class="btn-ghost" data-waiter="bill">🧾 Ask for bill</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Sticky cart bar -->
+  <div class="cart-bar" id="cartBar" hidden>
+    <div>
+      <strong id="cartCount">0 items</strong>
+      <span id="cartTotal">₹0</span>
+    </div>
+    <button class="btn-primary" id="checkoutBtn">View cart</button>
+  </div>
+
+  <!-- Checkout sheet -->
+  <div class="sheet-backdrop" id="sheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="sheet-head">
+        <h2 id="sheetTitle">Your order</h2>
+        <button class="icon-btn" id="closeSheet" aria-label="Close">✕</button>
+      </div>
+      <ul class="cart-lines" id="cartLines"></ul>
+      <label class="field">Your name <span class="muted">(optional)</span>
+        <input id="guestName" type="text" maxlength="40" placeholder="So staff can find you">
+      </label>
+      <label class="field">Note for the kitchen <span class="muted">(optional)</span>
+        <input id="orderNotes" type="text" maxlength="200" placeholder="e.g. less spicy, no onion">
+      </label>
+      <div class="bill">
+        <div><span>Subtotal</span><span id="billSubtotal"></span></div>
+        <div><span id="taxLabel">Tax</span><span id="billTax"></span></div>
+        <div class="bill-total"><span>Total</span><span id="billTotal"></span></div>
+      </div>
+      <button class="btn-primary block" id="placeOrderBtn">Place order</button>
+      <p class="muted small center">Pay at the table after your meal.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="order.js"></script>
+</body>
+</html>

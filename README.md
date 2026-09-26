@@ -39,7 +39,29 @@ A production-ready, full-stack Restaurant Order Management System that allows di
 - Sold-out dishes are immediately hidden from the WhatsApp Bot so customers cannot order them.
 - Add new food items with custom categories, prices, veg/non-veg tags, and descriptions.
 
-### 5. 📱 Built-in WhatsApp Smartphone Simulator
+### 5. 🌐 Order from the Browser (no WhatsApp needed)
+- Each table's QR can open a mobile ordering page: `/order/?table=<n>`.
+- Guests browse the menu or **just type their order** (see below), place it, and track it live: Received → Cooking → Ready → Served.
+- Cancel within the allowed window, call a waiter, ask for water or the bill.
+- Prices are always taken from the server menu; tracking links use a private per-order token.
+- The QR Studio has a **Web order / WhatsApp** toggle; printed tent cards use the web QR.
+
+### 6. ✨ AI Order Understanding (WhatsApp + Web)
+- Customers type naturally: *"2 butter naan, a dal makhani and a mango lassi, less spicy"*.
+- With `ANTHROPIC_API_KEY` set, Claude maps casual names, typos and Hinglish to menu items and pulls out kitchen notes.
+- Without a key, a built-in matcher handles quantities, plurals and notes, so the demo works out of the box.
+- Unknown items ("coke") are reported back; ambiguous ones ("paneer") get a "which one?" reply.
+
+### 7. 🌙 Daily Sales Summary for the Owner
+- Every night (default 23:00, restaurant time) the owner gets a WhatsApp message: sales, average order, web vs WhatsApp orders, busiest hour, average prep time, cancellations and top 5 dishes.
+- Preview, set the owner's number/time, or **Send now** from the Analytics tab.
+
+### 8. 🔒 One Party per Table
+- The first guest to order claims the table (web phone or WhatsApp number); others get "Table 3 is already taken".
+- Friends at the same table use the **Share table link** from the tracking screen to order together.
+- The table frees itself when all its orders are completed, after 45 minutes idle with no active order, or when staff press **Free table** in the QR Studio.
+
+### 9. 📱 Built-in WhatsApp Smartphone Simulator
 - Test the complete customer ordering experience right inside your browser without needing a verified Meta WhatsApp Business Account on day one!
 
 ---
@@ -62,6 +84,25 @@ Open your browser at:
 
 ---
 
+## 🔧 Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `ADMIN_PASSWORD` / `ADMIN_USER` | Login for the kitchen/admin panel (user defaults to `admin`) |
+| `ANTHROPIC_API_KEY` | Optional. Enables Claude for understanding typed orders |
+| `OWNER_WHATSAPP` | Optional. Owner's number for the daily summary (can also be set in the UI) |
+| `PUBLIC_BASE_URL` | Optional. Public URL used inside QR codes (auto-detected otherwise) |
+| `WHATSAPP_*` | Meta WhatsApp Cloud API credentials (see below) |
+| `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | Shared database for serverless hosting (Vercel). Alternative: `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Upstash Redis) |
+
+---
+
+## 🔐 Admin Login
+
+Set `ADMIN_PASSWORD` (and optionally `ADMIN_USER`, default `admin`) before deploying. The Kitchen/Admin panel, API and live updates then require this login. The WhatsApp webhook stays public but is protected by the verify token and Meta's request signature (`WHATSAPP_APP_SECRET`).
+
+---
+
 ## ⚙️ Connecting to Official Meta WhatsApp Cloud API
 
 When ready to use a real phone number for customer orders:
@@ -69,13 +110,14 @@ When ready to use a real phone number for customer orders:
 2. Add the **WhatsApp** product.
 3. In WhatsApp > Configuration, set your Webhook URL:
    - **Callback URL**: `https://<your-domain>/webhook`
-   - **Verify Token**: `RESTAURANT_ORDER_BOT_SECRET_2026`
+   - **Verify Token**: the value of `WHATSAPP_VERIFY_TOKEN` in your `.env`
 4. Under Webhook fields, click **Subscribe** for `messages`.
 5. Add your credentials in `.env`:
    ```env
    WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
    WHATSAPP_ACCESS_TOKEN=your_permanent_access_token
-   WHATSAPP_VERIFY_TOKEN=RESTAURANT_ORDER_BOT_SECRET_2026
+   WHATSAPP_VERIFY_TOKEN=any_long_random_string
+   WHATSAPP_APP_SECRET=your_meta_app_secret
    ```
 
 ---

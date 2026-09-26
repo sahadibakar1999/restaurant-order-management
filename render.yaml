@@ -11,4 +11,8 @@ services:
       - key: RESTAURANT_NAME
         value: "Royal Spice Bistro"
       - key: WHATSAPP_VERIFY_TOKEN
-        value: "RESTAURANT_ORDER_BOT_SECRET_2026"
+        generateValue: true
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

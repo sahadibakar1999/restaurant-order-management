@@ -12,7 +12,23 @@ class WhatsAppService {
   /**
    * Send WhatsApp message - either via official Meta Cloud API or via internal Simulator
    */
+  // Collects bot replies for one simulator request (used when live sockets are unavailable)
+  async captureReplies(userId, fn) {
+    this.captures = this.captures || new Map();
+    const bucket = [];
+    this.captures.set(userId, bucket);
+    try {
+      await fn();
+    } finally {
+      this.captures.delete(userId);
+    }
+    return bucket;
+  }
+
   async sendMessage(to, messagePayload) {
+    if (this.captures && this.captures.has(to)) {
+      this.captures.get(to).push({ to, message: messagePayload, timestamp: new Date().toISOString() });
+    }
     const settings = storage.getSettings();
     const metaConfig = settings.metaConfig || {};
     const token = metaConfig.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;

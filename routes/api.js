@@ -2,7 +2,10 @@ const express = require('express');
 const router = express.Router();
 const storage = require('../services/storage');
 const botEngine = require('../services/botEngine');
+const whatsappApi = require('../services/whatsappApi');
+const eventLog = require('../services/eventLog');
 const QRCode = require('qrcode');
+const dailySummary = require('../services/dailySummary');
 
 module.exports = function(io) {
   // --- Orders Endpoints ---
@@ -32,10 +35,14 @@ module.exports = function(io) {
       return res.status(400).json({ success: false, message: 'Invalid status code' });
     }
 
-    const updated = storage.updateOrderStatus(id, status, reason);
-    if (!updated) {
+    const existing = storage.getOrderById(id);
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    if (!storage.canChangeStatus(existing, status)) {
+      return res.status(409).json({ success: false, message: `Order is already ${existing.status} and can't be changed to ${status}.` });
+    }
+    const updated = storage.updateOrderStatus(id, status, typeof reason === 'string' ? reason.slice(0, 200) : '');
 
     // Broadcast to kitchen, admin, and simulator
     if (io) {
@@ -54,6 +61,47 @@ module.exports = function(io) {
     return res.json({ success: true, order: updated });
   });
 
+  // Kitchen removes selected dishes (out of stock etc.) from an open order
+  router.post('/orders/:id/remove-items', async (req, res) => {
+    const { itemIndexes, markOutOfStock = true } = req.body || {};
+    const reason = typeof req.body?.reason === 'string' && req.body.reason.trim() ? req.body.reason.trim().slice(0, 100) : 'Out of stock';
+    const order = storage.getOrderById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (!['pending', 'cooking', 'ready'].includes(order.status)) {
+      return res.status(409).json({ success: false, message: `Order is already ${order.status}; dishes can't be removed now.` });
+    }
+    const indexes = Array.isArray(itemIndexes)
+      ? [...new Set(itemIndexes.map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < order.items.length))]
+      : [];
+    if (indexes.length === 0) return res.status(400).json({ success: false, message: 'Select at least one dish to remove.' });
+
+    const { order: updated, removed } = storage.removeOrderItems(order.id, indexes, reason);
+
+    // Sold out: hide from the menu so nobody else orders it
+    if (markOutOfStock) {
+      removed.forEach(i => storage.toggleItemStock(i.id, false));
+      if (io) io.emit('menu_updated', { menu: storage.getMenu() });
+    }
+
+    if (io) {
+      io.emit('order_status_updated', { order: updated, timestamp: new Date().toISOString() });
+      if (updated.status === 'cancelled') io.emit('play_sound', { type: 'cancellation', orderId: updated.id, tableNo: updated.tableNo });
+    }
+
+    // Tell WhatsApp customers right away (web guests see it on their tracker)
+    if (updated.channel !== 'web' && updated.customerPhone) {
+      const settings = storage.getSettings();
+      const curr = settings.currency || '₹';
+      const names = removed.map(i => `${i.quantity}x ${i.name}`).join(', ');
+      const text = updated.status === 'cancelled'
+        ? `😔 Sorry! ${names} ${removed.length > 1 ? 'are' : 'is'} unavailable (${reason}), so order #${updated.id} has been cancelled. Please order something else or ask a waiter.`
+        : `😔 Sorry! ${names} ${removed.length > 1 ? 'are' : 'is'} unavailable (${reason}) and was removed from order #${updated.id}.\nNew total: *${curr}${updated.total}*`;
+      await whatsappApi.sendMessage(updated.customerPhone, text).catch(() => {});
+    }
+
+    return res.json({ success: true, order: updated, removed: removed.map(i => i.name) });
+  });
+
   // --- Tables Endpoints ---
 
   router.get('/tables', (req, res) => {
@@ -65,13 +113,26 @@ module.exports = function(io) {
       const activeOrder = orders.find(o => 
         Number(o.tableNo) === Number(t.number) && !['completed', 'cancelled'].includes(o.status)
       );
+      const session = storage.tableSession(t.number);
+      const { session: _raw, ...rest } = t;
       return {
-        ...t,
-        activeOrder: activeOrder || null
+        ...rest,
+        activeOrder: activeOrder || null,
+        // Who holds the table (never the device token itself)
+        occupiedBy: session ? { type: session.type, since: session.startedAt } : null
       };
     });
 
     return res.json({ success: true, tables: enhanced });
+  });
+
+  // Staff frees a table for the next party (guests left without completing)
+  router.post('/tables/:number/free', (req, res) => {
+    const table = storage.getTable(req.params.number);
+    if (!table) return res.status(404).json({ success: false, message: 'Table not found' });
+    storage.freeTable(table.number);
+    if (io) io.emit('table_freed', { tableNo: table.number });
+    return res.json({ success: true });
   });
 
   // Generate QR Code for a Table (Data URL)
@@ -82,22 +143,22 @@ module.exports = function(io) {
     
     // The WhatsApp wa.me link with prefilled text
     const waLink = `https://wa.me/${botPhone || '15551234567'}?text=Hi%20Table%20${tableNo}`;
+    // Browser ordering page (no WhatsApp needed)
+    const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const webLink = `${baseUrl.replace(/\/$/, '')}/order/?table=${encodeURIComponent(tableNo)}`;
 
     try {
-      const qrDataUrl = await QRCode.toDataURL(waLink, {
-        width: 320,
-        margin: 2,
-        color: {
-          dark: '#111827',
-          light: '#ffffff'
-        }
-      });
+      const qrOptions = { width: 320, margin: 2, color: { dark: '#111827', light: '#ffffff' } };
+      const qrDataUrl = await QRCode.toDataURL(waLink, qrOptions);
+      const webQrDataUrl = await QRCode.toDataURL(webLink, qrOptions);
 
       return res.json({
         success: true,
         tableNo,
         waLink,
-        qrDataUrl
+        qrDataUrl,
+        webLink,
+        webQrDataUrl
       });
     } catch (err) {
       console.error('Error generating QR:', err);
@@ -114,20 +175,24 @@ module.exports = function(io) {
 
   router.post('/menu', (req, res) => {
     const menu = storage.getMenu();
-    const { name, category, price, isVeg, isSpicy, description } = req.body;
+    const { name, category, price, isVeg, isSpicy, description } = req.body || {};
+    const numericPrice = Number(price);
 
-    if (!name || !category || !price) {
-      return res.status(400).json({ success: false, message: 'Name, category, and price are required' });
+    if (typeof name !== 'string' || !name.trim() || typeof category !== 'string' || !category.trim()) {
+      return res.status(400).json({ success: false, message: 'Name and category are required' });
+    }
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0 || numericPrice > 100000) {
+      return res.status(400).json({ success: false, message: 'Price must be a number greater than 0' });
     }
 
     const newItem = {
       id: `item_${Date.now()}`,
-      name: name.trim(),
-      category: category.trim(),
-      price: Number(price),
+      name: name.trim().slice(0, 80),
+      category: category.trim().slice(0, 40),
+      price: Math.round(numericPrice * 100) / 100,
       isVeg: Boolean(isVeg),
       isSpicy: Boolean(isSpicy),
-      description: description ? description.trim() : '',
+      description: typeof description === 'string' ? description.trim().slice(0, 300) : '',
       inStock: true,
       popular: false
     };
@@ -176,24 +241,30 @@ module.exports = function(io) {
     }
 
     try {
-      await botEngine.handleMessage(userId, text, {
+      const messages = await whatsappApi.captureReplies(userId, () => botEngine.handleMessage(userId, text, {
         tableNo: tableNo ? Number(tableNo) : undefined,
         customerName: customerName || 'Simulator Guest'
-      });
-      return res.json({ success: true });
+      }));
+      return res.json({ success: true, messages });
     } catch (err) {
       console.error('Simulator error:', err);
       return res.status(500).json({ success: false, message: err.message });
     }
   });
 
+  // --- Live events (polling fallback when WebSockets aren't available) ---
+
+  router.get('/events', (req, res) => {
+    return res.json({ success: true, ...eventLog.since(Number(req.query.since) || 0) });
+  });
+
   // --- Analytics & Stats ---
 
   router.get('/stats', (req, res) => {
     const orders = storage.getOrders();
-    const todayStr = new Date().toISOString().slice(0, 10);
-
-    const todayOrders = orders.filter(o => (o.createdAt || '').slice(0, 10) === todayStr);
+    // "Today" in the restaurant's timezone, not UTC
+    const todayStr = dailySummary.dayKey(new Date());
+    const todayOrders = orders.filter(o => o.createdAt && dailySummary.dayKey(new Date(o.createdAt)) === todayStr);
     const activeOrders = orders.filter(o => ['pending', 'cooking', 'ready'].includes(o.status));
     const completedToday = todayOrders.filter(o => o.status === 'completed');
     const cancelledToday = todayOrders.filter(o => o.status === 'cancelled');
@@ -248,14 +319,101 @@ module.exports = function(io) {
 
   // --- Settings ---
 
-  router.get('/settings', (req, res) => {
-    const settings = storage.getSettings();
-    return res.json({ success: true, settings });
+  // --- Daily Sales Summary ---
+
+  router.get('/reports/daily', (req, res) => {
+    const requested = req.query.date;
+    let day;
+    if (requested !== undefined) {
+      const valid = typeof requested === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(requested) &&
+        !isNaN(new Date(`${requested}T00:00:00Z`)) && new Date(`${requested}T00:00:00Z`).toISOString().slice(0, 10) === requested;
+      if (!valid) return res.status(400).json({ success: false, message: 'Date must be a real date in YYYY-MM-DD format' });
+      day = requested;
+    }
+    const summary = dailySummary.buildSummary(day);
+    const s = storage.getSettings();
+    return res.json({
+      success: true,
+      summary,
+      message: dailySummary.formatMessage(summary),
+      schedule: {
+        ownerWhatsapp: s.ownerWhatsapp || '',
+        dailySummaryTime: s.dailySummaryTime || '23:00',
+        dailySummaryEnabled: s.dailySummaryEnabled !== false,
+        timezone: s.timezone || 'Asia/Kolkata'
+      }
+    });
   });
 
+  router.post('/reports/daily/send', async (req, res) => {
+    try {
+      const { to } = await dailySummary.sendSummary();
+      return res.json({ success: true, sentTo: to === 'owner_simulator' ? 'Simulator (no owner number set)' : `+${to}` });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  router.post('/reports/schedule', (req, res) => {
+    const { ownerWhatsapp, dailySummaryTime, dailySummaryEnabled } = req.body || {};
+    if (dailySummaryTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(dailySummaryTime)) {
+      return res.status(400).json({ success: false, message: 'Time must be HH:MM (24h)' });
+    }
+    const current = storage.getSettings();
+    storage.saveSettings({
+      ...current,
+      ownerWhatsapp: String(ownerWhatsapp ?? current.ownerWhatsapp ?? '').replace(/[^\d+ ]/g, '').slice(0, 20),
+      dailySummaryTime: dailySummaryTime || current.dailySummaryTime || '23:00',
+      dailySummaryEnabled: dailySummaryEnabled !== undefined ? Boolean(dailySummaryEnabled) : current.dailySummaryEnabled !== false
+    });
+    return res.json({ success: true });
+  });
+
+  // Never send WhatsApp credentials to the browser
+  function publicSettings() {
+    const { metaConfig, ...rest } = storage.getSettings();
+    return {
+      ...rest,
+      metaConfig: {
+        phoneNumberId: (metaConfig && metaConfig.phoneNumberId) || '',
+        wabaId: (metaConfig && metaConfig.wabaId) || '',
+        accessTokenSet: Boolean((metaConfig && metaConfig.accessToken) || process.env.WHATSAPP_ACCESS_TOKEN)
+      }
+    };
+  }
+
+  router.get('/settings', (req, res) => {
+    return res.json({ success: true, settings: publicSettings() });
+  });
+
+  // Only known settings, with sane values
+  function validateSettings(body) {
+    const out = {};
+    const errors = [];
+    const str = (key, max) => {
+      if (body[key] === undefined) return;
+      if (typeof body[key] !== 'string') errors.push(`${key} must be text`);
+      else out[key] = body[key].trim().slice(0, max);
+    };
+    const num = (key, min, max) => {
+      if (body[key] === undefined) return;
+      const n = Number(body[key]);
+      if (body[key] === '' || !Number.isFinite(n) || n < min || n > max) errors.push(`${key} must be a number between ${min} and ${max}`);
+      else out[key] = n;
+    };
+    str('restaurantName', 60); str('tagline', 120); str('currency', 4);
+    str('wifiName', 40); str('wifiPassword', 40); str('whatsappNumber', 20); str('timezone', 40);
+    num('taxPercent', 0, 50); num('allowCancellationMinutes', 0, 60);
+    return { out, errors };
+  }
+
   router.post('/settings', (req, res) => {
-    const updated = storage.saveSettings(req.body);
-    return res.json({ success: true, settings: storage.getSettings() });
+    // WhatsApp credentials are configured through environment variables only
+    const { out: changes, errors } = validateSettings(req.body || {});
+    if (errors.length) return res.status(400).json({ success: false, message: errors.join('; ') });
+    const current = storage.getSettings();
+    storage.saveSettings({ ...current, ...changes, metaConfig: current.metaConfig });
+    return res.json({ success: true, settings: publicSettings() });
   });
 
   return router;

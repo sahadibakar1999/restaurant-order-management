@@ -91,7 +91,7 @@
 
         <!-- Filter Bar -->
         <div class="kds-filter-bar">
-          <button class="filter-btn active" data-filter="all">
+          <button class="filter-btn active" data-filter="active">
             All Active <span class="count-tag" id="kdsCountAll">0</span>
           </button>
           <button class="filter-btn" data-filter="pending">
@@ -105,6 +105,9 @@
           </button>
           <button class="filter-btn" data-filter="served">
             🍽️ Served
+          </button>
+          <button class="filter-btn" data-filter="completed">
+            ✅ Completed
           </button>
           <button class="filter-btn" data-filter="cancelled">
             🛑 Cancelled
@@ -325,6 +328,29 @@
         </div>
       </div>
 
+      <!-- Daily Sales Summary (sent to owner on WhatsApp) -->
+      <div class="daily-summary-panel">
+        <div>
+          <h3>🌙 Daily sales summary</h3>
+          <p class="sub">What the owner receives on WhatsApp each night. Updates live with today's orders.</p>
+          <div class="daily-summary-preview" id="dailySummaryPreview">Loading…</div>
+        </div>
+        <form class="summary-form" id="dailySummaryForm">
+          <label for="ownerWhatsapp">Owner's WhatsApp number</label>
+          <input type="text" id="ownerWhatsapp" placeholder="+91 98xxxxxxxx" maxlength="20">
+          <label for="summaryTime">Send every day at (restaurant time)</label>
+          <input type="time" id="summaryTime" value="23:00">
+          <label style="display:flex; gap:8px; align-items:center; margin-top:12px;">
+            <input type="checkbox" id="summaryEnabled" checked> Send automatically
+          </label>
+          <div class="row">
+            <button type="submit" class="btn-primary">Save schedule</button>
+            <button type="button" class="btn-primary" id="btnSendSummaryNow" style="background: var(--accent-whatsapp-dark);">Send now</button>
+          </div>
+          <p class="status" id="dailySummaryStatus"></p>
+        </form>
+      </div>
+
       <!-- History Table -->
       <div class="history-table-container">
         <table class="styled-table">
@@ -387,7 +413,7 @@
               </code>
             </div>
             <div style="margin-top: 8px; font-size: 0.82rem; color: #94a3b8;">
-              Verify Token: <strong style="color: #fff;">RESTAURANT_ORDER_BOT_SECRET_2026</strong>
+              Verify Token: <strong style="color: #fff;">value of WHATSAPP_VERIFY_TOKEN</strong>
             </div>
           </div>
 
@@ -481,6 +507,7 @@
   </div>
 
   <!-- Scripts -->
+  <script src="/js/fetch-shim.js"></script>
   <script src="/js/audio.js"></script>
   <script src="/js/simulator.js"></script>
   <script src="/js/qr-studio.js"></script>
