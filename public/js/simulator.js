@@ -2,7 +2,8 @@
 
 class WhatsAppSimulator {
   constructor() {
-    this.phone = '+91 98765 12345';
+    // One simulated customer per browser, so several testers don't share a chat
+    this.phone = this.loadSimId();
     this.tableNo = 3;
     this.chatFeed = document.getElementById('waChatFeed');
     this.inputBox = document.getElementById('waInputBox');
@@ -11,6 +12,17 @@ class WhatsAppSimulator {
     this.typingIndicator = document.getElementById('waTypingIndicator');
 
     this.init();
+  }
+
+  loadSimId() {
+    const make = () => `sim_${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      let id = localStorage.getItem('simulatorCustomerId');
+      if (!id) { id = make(); localStorage.setItem('simulatorCustomerId', id); }
+      return id;
+    } catch {
+      return make();
+    }
   }
 
   init() {
@@ -77,6 +89,15 @@ class WhatsAppSimulator {
         tableNo: this.tableNo,
         customerName: `Guest (Table ${this.tableNo})`
       })
+    })
+    .then(res => res.json())
+    .then(data => {
+      // Without a live socket, show the bot replies returned with this request
+      const live = window.app && window.app.socket && window.app.socket.connected;
+      if (!live && data && Array.isArray(data.messages)) {
+        data.messages.forEach(m => this.handleIncomingBotMessage(m));
+      }
+      if (!live) this.showTyping(false);
     })
     .catch(err => {
       console.error('Failed to send simulator message:', err);

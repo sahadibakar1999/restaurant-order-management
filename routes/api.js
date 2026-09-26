@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const storage = require('../services/storage');
 const botEngine = require('../services/botEngine');
+const whatsappApi = require('../services/whatsappApi');
+const eventLog = require('../services/eventLog');
 const QRCode = require('qrcode');
 const dailySummary = require('../services/dailySummary');
 
@@ -177,15 +179,21 @@ module.exports = function(io) {
     }
 
     try {
-      await botEngine.handleMessage(userId, text, {
+      const messages = await whatsappApi.captureReplies(userId, () => botEngine.handleMessage(userId, text, {
         tableNo: tableNo ? Number(tableNo) : undefined,
         customerName: customerName || 'Simulator Guest'
-      });
-      return res.json({ success: true });
+      }));
+      return res.json({ success: true, messages });
     } catch (err) {
       console.error('Simulator error:', err);
       return res.status(500).json({ success: false, message: err.message });
     }
+  });
+
+  // --- Live events (polling fallback when WebSockets aren't available) ---
+
+  router.get('/events', (req, res) => {
+    return res.json({ success: true, ...eventLog.since(Number(req.query.since) || 0) });
   });
 
   // --- Analytics & Stats ---

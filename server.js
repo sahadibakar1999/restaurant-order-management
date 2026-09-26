@@ -22,6 +22,15 @@ const io = new Server(server, {
   allowRequest: (req, callback) => callback(null, adminAuth.isAuthorized(req.headers.authorization))
 });
 
+// Every real-time event is also recorded so browsers can poll /api/events
+// when WebSockets aren't available (serverless hosting)
+const eventLog = require('./services/eventLog');
+const socketEmit = io.emit.bind(io);
+io.emit = (event, data) => {
+  eventLog.record(event, data);
+  return socketEmit(event, data);
+};
+
 const PORT = process.env.PORT || 3000;
 
 // Wire Socket.IO into services
@@ -50,6 +59,8 @@ if (!adminAuth.enabled) {
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
+// Socket.IO client script (normally served by the socket server; needed on serverless)
+app.use('/socket.io', express.static(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist')));
 
 // Routes
 app.use('/api', apiRoutesFactory(io));
@@ -67,6 +78,10 @@ io.on('connection', (socket) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// On Vercel the app is exported as a function; elsewhere run a normal server
+module.exports = app;
+if (process.env.VERCEL) return;
 
 dailySummary.startScheduler();
 

@@ -31,11 +31,16 @@ class RestaurantApp {
   }
 
   initSocket() {
-    this.socket = io();
+    this.socket = io({ reconnectionAttempts: 3, timeout: 5000 });
+    this.lastEventId = null;
 
     this.socket.on('connect', () => {
       console.log('Connected to Kitchen Display real-time gateway');
     });
+
+    // Serverless hosting has no WebSockets: poll recent events instead and
+    // feed them to the same handlers registered below.
+    this.pollTimer = setInterval(() => this.pollEvents(), 3000);
 
     // New Incoming Order
     this.socket.on('new_order', (data) => {
@@ -87,9 +92,9 @@ class RestaurantApp {
       else if (data.type === 'ready') window.soundFX.playReadyBell();
     });
 
-    // Bot message for simulator
+    // Bot message for simulator (only replies meant for this browser's chat)
     this.socket.on('bot_message', (data) => {
-      if (window.simulator) {
+      if (window.simulator && data.to === window.simulator.phone) {
         window.simulator.handleIncomingBotMessage(data);
       }
     });
@@ -175,6 +180,26 @@ class RestaurantApp {
     if (!this.urgentBanner || !this.urgentBannerText) return;
     this.urgentBannerText.textContent = text;
     this.urgentBanner.classList.add('active');
+  }
+
+  async pollEvents() {
+    if (this.socket && this.socket.connected) return;
+    try {
+      const since = this.lastEventId === null ? 0 : this.lastEventId;
+      const res = await fetch(`/api/events?since=${since}`);
+      const data = await res.json();
+      if (!data.success) return;
+      const firstPoll = this.lastEventId === null;
+      this.lastEventId = data.lastId;
+      if (firstPoll) return; // only react to events that happen from now on
+      if (data.reset) { this.loadInitialData(); return; }
+      for (const evt of data.events) {
+        if (evt.event === 'bot_message') continue; // simulator gets replies in its own response
+        this.socket.listeners(evt.event).forEach(handler => handler(evt.data));
+      }
+    } catch (err) {
+      /* offline for a moment; try again next tick */
+    }
   }
 
   async loadInitialData() {

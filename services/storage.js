@@ -1,7 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const SEED_DIR = path.join(__dirname, '..', 'data');
+
+// Serverless hosts (Vercel) have a read-only code folder: copy the seed data
+// to /tmp on first use. Data then lives as long as the function instance.
+function resolveDataDir() {
+  if (!process.env.VERCEL) return SEED_DIR;
+  const dir = path.join('/tmp', 'restaurant-data');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const file of fs.readdirSync(SEED_DIR)) {
+      fs.copyFileSync(path.join(SEED_DIR, file), path.join(dir, file));
+    }
+  }
+  return dir;
+}
+const DATA_DIR = resolveDataDir();
 
 // Helper to safely read JSON
 function readJson(filename, defaultValue = []) {
