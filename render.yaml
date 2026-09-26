@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: restaurant-order-management
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RESTAURANT_NAME
+        value: "Royal Spice Bistro"
+      - key: WHATSAPP_VERIFY_TOKEN
+        value: "RESTAURANT_ORDER_BOT_SECRET_2026"
