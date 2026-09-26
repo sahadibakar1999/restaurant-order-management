@@ -62,9 +62,14 @@ class QRStudio {
         <span class="table-status-pill ${statusClass}">${statusLabel}</span>
         <div class="table-big-number">Table ${table.number}</div>
         <div class="table-seats-caption">Capacity: ${table.capacity} Persons</div>
+        <div class="qr-mode-toggle" role="tablist" aria-label="QR type">
+          <button class="qr-mode-btn active" data-mode="web" data-table="${table.number}">🌐 Web order</button>
+          <button class="qr-mode-btn" data-mode="wa" data-table="${table.number}">💬 WhatsApp</button>
+        </div>
         <div class="qr-preview-box" id="qrContainer-${table.number}">
           <span style="font-size: 0.8rem; color: #64748b;">Loading QR...</span>
         </div>
+        <a class="qr-open-link" id="qrLink-${table.number}" href="#" target="_blank" rel="noopener">Open guest page ↗</a>
         <div class="table-card-actions">
           <button class="btn-qr-action btn-sim-test" data-table="${table.number}">
             📱 Test Simulator
@@ -96,6 +101,14 @@ class QRStudio {
       });
     });
 
+    this.tablesGrid.querySelectorAll('.qr-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tableNum = btn.getAttribute('data-table');
+        btn.parentElement.querySelectorAll('.qr-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+        this.showQR(tableNum, btn.getAttribute('data-mode'));
+      });
+    });
+
     this.tablesGrid.querySelectorAll('.btn-print-single').forEach(btn => {
       btn.addEventListener('click', (e) => {
         window.print();
@@ -107,14 +120,28 @@ class QRStudio {
     try {
       const res = await fetch(`/api/tables/${tableNumber}/qr`);
       const data = await res.json();
-      if (data.success && data.qrDataUrl) {
-        const box = document.getElementById(`qrContainer-${tableNumber}`);
-        if (box) {
-          box.innerHTML = `<img src="${data.qrDataUrl}" alt="QR Code Table ${tableNumber}" title="Scan to order via WhatsApp">`;
-        }
+      if (data.success) {
+        this.qrCache = this.qrCache || {};
+        this.qrCache[tableNumber] = data;
+        this.showQR(tableNumber, 'web');
       }
     } catch (err) {
       console.error(`Failed to fetch QR for table ${tableNumber}:`, err);
+    }
+  }
+
+  showQR(tableNumber, mode) {
+    const data = (this.qrCache || {})[tableNumber];
+    const box = document.getElementById(`qrContainer-${tableNumber}`);
+    const link = document.getElementById(`qrLink-${tableNumber}`);
+    if (!data || !box) return;
+    const isWeb = mode === 'web';
+    const src = isWeb ? data.webQrDataUrl : data.qrDataUrl;
+    const title = isWeb ? 'Scan to order from the browser (no app needed)' : 'Scan to order via WhatsApp';
+    box.innerHTML = `<img src="${src}" alt="QR Code Table ${tableNumber}" title="${title}">`;
+    if (link) {
+      link.href = isWeb ? data.webLink : data.waLink;
+      link.textContent = isWeb ? 'Open guest page ↗' : 'Open WhatsApp link ↗';
     }
   }
 
@@ -127,7 +154,7 @@ class QRStudio {
       tentCard.className = 'tent-card-item';
       tentCard.innerHTML = `
         <h2 style="font-size: 24px; margin-bottom: 4px; color: #92400e;">👑 ROYAL SPICE BISTRO</h2>
-        <p style="font-size: 13px; color: #78350f; margin-bottom: 16px;">Scan to View Menu & Order on WhatsApp</p>
+        <p style="font-size: 13px; color: #78350f; margin-bottom: 16px;">Scan to view the menu &amp; order (no app needed)</p>
         <div style="font-size: 32px; font-weight: 900; margin-bottom: 12px; color: #1e293b;">TABLE ${table.number}</div>
         <div style="width: 200px; height: 200px; margin: 0 auto 16px auto; background: #fff; padding: 10px; border: 1px solid #e2e8f0; border-radius: 12px;" id="printQr-${table.number}">
           <img src="" style="width:100%; height:100%;" id="printImg-${table.number}">
@@ -145,9 +172,9 @@ class QRStudio {
       fetch(`/api/tables/${table.number}/qr`)
         .then(r => r.json())
         .then(d => {
-          if (d.success && d.qrDataUrl) {
+          if (d.success && d.webQrDataUrl) {
             const img = document.getElementById(`printImg-${table.number}`);
-            if (img) img.src = d.qrDataUrl;
+            if (img) img.src = d.webQrDataUrl;
           }
         });
     });

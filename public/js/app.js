@@ -1,5 +1,8 @@
 // Main Application Orchestrator for Kitchen Display, Menu, and Analytics
 
+// Guest-typed text (names, notes) must never be inserted as raw HTML
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 class RestaurantApp {
   constructor() {
     this.socket = null;
@@ -266,7 +269,7 @@ class RestaurantApp {
       cancelAlertHtml = `
         <div class="cancel-alert-box">
           <span>⚠️ <strong>CANCELLED BY CUSTOMER</strong></span>
-          <span style="margin-left: auto;">${order.cancelReason || 'Customer requested cancel'}</span>
+          <span style="margin-left: auto;">${escapeHtml(order.cancelReason || 'Customer requested cancel')}</span>
         </div>
       `;
     }
@@ -289,7 +292,7 @@ class RestaurantApp {
     // Notes
     let notesHtml = '';
     if (order.notes) {
-      notesHtml = `<div class="order-notes-box">📝 <strong>Note:</strong> ${order.notes}</div>`;
+      notesHtml = `<div class="order-notes-box">📝 <strong>Note:</strong> ${escapeHtml(order.notes)}</div>`;
     }
 
     // Action buttons based on status
@@ -340,7 +343,7 @@ class RestaurantApp {
           <div class="table-number-pill">Table ${order.tableNo}</div>
           <div class="order-meta-info">
             <span class="order-id-label">#${order.id}</span>
-            <span class="order-guest-name">${order.customerName || 'Guest'}</span>
+            <span class="order-guest-name">${escapeHtml(order.customerName || 'Guest')}${order.channel === 'web' ? '<span class="channel-badge web">🌐 Web QR</span>' : '<span class="channel-badge whatsapp">WhatsApp</span>'}</span>
           </div>
         </div>
         <div class="order-timing-status">
@@ -538,6 +541,52 @@ class RestaurantApp {
     } catch (err) {
       console.error('Failed to load stats:', err);
     }
+    this.loadDailySummary();
+  }
+
+  async loadDailySummary() {
+    const preview = document.getElementById('dailySummaryPreview');
+    if (!preview) return;
+    try {
+      const res = await fetch('/api/reports/daily');
+      const data = await res.json();
+      if (!data.success) return;
+      // WhatsApp-style *bold* rendered for the preview; text escaped first
+      preview.innerHTML = escapeHtml(data.message).replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+      if (!this.summaryFormInit) {
+        document.getElementById('ownerWhatsapp').value = data.schedule.ownerWhatsapp;
+        document.getElementById('summaryTime').value = data.schedule.dailySummaryTime;
+        document.getElementById('summaryEnabled').checked = data.schedule.dailySummaryEnabled;
+        this.initDailySummaryForm();
+      }
+    } catch (err) {
+      preview.textContent = 'Could not load the summary.';
+    }
+  }
+
+  initDailySummaryForm() {
+    this.summaryFormInit = true;
+    const status = document.getElementById('dailySummaryStatus');
+    document.getElementById('dailySummaryForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/reports/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerWhatsapp: document.getElementById('ownerWhatsapp').value,
+          dailySummaryTime: document.getElementById('summaryTime').value,
+          dailySummaryEnabled: document.getElementById('summaryEnabled').checked
+        })
+      });
+      const data = await res.json();
+      status.textContent = data.success ? '✅ Schedule saved' : `⚠️ ${data.message}`;
+    });
+    document.getElementById('btnSendSummaryNow').addEventListener('click', async () => {
+      status.textContent = 'Sending…';
+      const res = await fetch('/api/reports/daily/send', { method: 'POST' });
+      const data = await res.json();
+      status.textContent = data.success ? `✅ Sent to ${data.sentTo}` : `⚠️ ${data.message}`;
+    });
   }
 
   renderHistoryTable() {

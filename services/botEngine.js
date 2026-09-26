@@ -1,5 +1,7 @@
 const storage = require('./storage');
 const whatsappApi = require('./whatsappApi');
+const orderParser = require('./orderParser');
+const orderService = require('./orderService');
 
 // In-memory customer sessions
 // Key: customerId (phone number or simulator ID)
@@ -70,16 +72,10 @@ class BotEngine {
     const curr = settings.currency || '₹';
 
     // 1. Initial Greeting / QR scan trigger
-    if (
-      text.includes('hi') ||
-      text.includes('hello') ||
-      text.includes('hey') ||
-      text.includes('namaste') ||
-      text.includes('start') ||
-      text.includes('menu') ||
-      text === 'home' ||
-      tableMatch
-    ) {
+    // Whole-word greeting check ("chicken" must not count as "hi")
+    const isGreeting = /^(hi|hii+|hello|hey|namaste|start|menu|home)\b/.test(text) ||
+      /\b(show|see|view|open)\s+(the\s+)?menu\b/.test(text);
+    if (isGreeting || (tableMatch && text.split(/\s+/).length <= 4)) {
       if (detectedTable) {
         session.tableNo = detectedTable;
       }
@@ -99,7 +95,7 @@ class BotEngine {
       return this.handleCancelOrder(userId, session);
     }
 
-    if (text === 'btn_waiter' || text.includes('call waiter') || text.includes('water') || text.includes('bill')) {
+    if (text === 'btn_waiter' || /\b(waiter|bill|cheque|napkins?|tissues?)\b/.test(text) || /^(need |some |more )?water( please)?$/.test(text)) {
       return this.handleCallWaiter(userId, session, rawText);
     }
 
@@ -138,6 +134,21 @@ class BotEngine {
       const item = menu.find(m => m.id === itemId);
       if (item) {
         return this.addItemToCart(userId, session, item, 1);
+      }
+    }
+
+    // AI order understanding: "2 butter naan and a mango lassi, less spicy"
+    if (rawText.split(/\s+/).length > 1 || orderParser.looksLikeOrder(rawText)) {
+      const parsed = await orderParser.parseOrder(rawText, menu);
+      if (parsed.items.length) {
+        return this.addParsedItems(userId, session, parsed);
+      }
+      if (parsed.ambiguous.length) {
+        const a = parsed.ambiguous[0];
+        return whatsappApi.sendMessage(userId,
+          `🤔 Which one did you mean for "_${a.text}_"?\n\n` +
+          a.options.map((o, i) => `${i + 1}. ${o}`).join('\n') +
+          `\n\nReply with the dish name, e.g. "2 ${a.options[0]}".`);
       }
     }
 
@@ -288,6 +299,43 @@ class BotEngine {
     ]));
   }
 
+  async addParsedItems(userId, session, parsed) {
+    const settings = storage.getSettings();
+    const curr = settings.currency || '₹';
+    const { cart, soldOut } = orderService.buildCart(parsed.items);
+
+    for (const line of cart) {
+      const existing = session.cart.find(c => c.id === line.id);
+      if (existing) existing.quantity = Math.min(existing.quantity + line.quantity, 20);
+      else session.cart.push(line);
+    }
+
+    const itemNotes = parsed.items
+      .filter(i => i.note)
+      .map(i => {
+        const line = cart.find(c => c.id === i.itemId);
+        return line ? `${line.name}: ${i.note}` : null;
+      })
+      .filter(Boolean);
+    const notes = [...itemNotes, parsed.note].filter(Boolean);
+    if (notes.length) session.notes = [session.notes, ...notes].filter(Boolean).join('; ');
+
+    const cartTotal = session.cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    let msg = cart.length
+      ? `✅ Got it! Added to your cart:\n` + cart.map(c => `• ${c.quantity}x ${c.name} — ${curr}${c.price * c.quantity}`).join('\n')
+      : `⚠️ I couldn't add those items.`;
+    if (notes.length) msg += `\n📝 Note for kitchen: _${notes.join('; ')}_`;
+    if (soldOut.length) msg += `\n\n❌ Sold out right now: ${soldOut.join(', ')}`;
+    if (parsed.unmatched.length) msg += `\n\n🤷 Not on our menu: ${parsed.unmatched.map(u => `"${u}"`).join(', ')}`;
+    msg += `\n\n🛒 *Cart total:* ${curr}${cartTotal}`;
+
+    return whatsappApi.sendMessage(userId, whatsappApi.buildButtons(msg, [
+      { id: 'btn_confirm_order', title: '✅ Place Order' },
+      { id: 'btn_view_cart', title: '🛒 Review Cart' },
+      { id: 'btn_order', title: '➕ Add More Food' }
+    ]));
+  }
+
   async sendCartSummary(userId, session) {
     const settings = storage.getSettings();
     const curr = settings.currency || '₹';
@@ -350,11 +398,12 @@ class BotEngine {
       subtotal,
       tax,
       total,
-      notes: metadata.notes || ''
+      notes: [metadata.notes, session.notes].filter(Boolean).join('; ')
     });
 
     // Clear cart after order creation
     session.cart = [];
+    session.notes = '';
 
     // Broadcast real-time event to Kitchen Display System (KDS) & Admin Panel
     if (this.io) {

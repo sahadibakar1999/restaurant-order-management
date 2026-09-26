@@ -3,6 +3,7 @@ const router = express.Router();
 const storage = require('../services/storage');
 const botEngine = require('../services/botEngine');
 const QRCode = require('qrcode');
+const dailySummary = require('../services/dailySummary');
 
 module.exports = function(io) {
   // --- Orders Endpoints ---
@@ -82,22 +83,22 @@ module.exports = function(io) {
     
     // The WhatsApp wa.me link with prefilled text
     const waLink = `https://wa.me/${botPhone || '15551234567'}?text=Hi%20Table%20${tableNo}`;
+    // Browser ordering page (no WhatsApp needed)
+    const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const webLink = `${baseUrl.replace(/\/$/, '')}/order/?table=${encodeURIComponent(tableNo)}`;
 
     try {
-      const qrDataUrl = await QRCode.toDataURL(waLink, {
-        width: 320,
-        margin: 2,
-        color: {
-          dark: '#111827',
-          light: '#ffffff'
-        }
-      });
+      const qrOptions = { width: 320, margin: 2, color: { dark: '#111827', light: '#ffffff' } };
+      const qrDataUrl = await QRCode.toDataURL(waLink, qrOptions);
+      const webQrDataUrl = await QRCode.toDataURL(webLink, qrOptions);
 
       return res.json({
         success: true,
         tableNo,
         waLink,
-        qrDataUrl
+        qrDataUrl,
+        webLink,
+        webQrDataUrl
       });
     } catch (err) {
       console.error('Error generating QR:', err);
@@ -247,6 +248,49 @@ module.exports = function(io) {
   });
 
   // --- Settings ---
+
+  // --- Daily Sales Summary ---
+
+  router.get('/reports/daily', (req, res) => {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : undefined;
+    const summary = dailySummary.buildSummary(day);
+    const s = storage.getSettings();
+    return res.json({
+      success: true,
+      summary,
+      message: dailySummary.formatMessage(summary),
+      schedule: {
+        ownerWhatsapp: s.ownerWhatsapp || '',
+        dailySummaryTime: s.dailySummaryTime || '23:00',
+        dailySummaryEnabled: s.dailySummaryEnabled !== false,
+        timezone: s.timezone || 'Asia/Kolkata'
+      }
+    });
+  });
+
+  router.post('/reports/daily/send', async (req, res) => {
+    try {
+      const { to } = await dailySummary.sendSummary();
+      return res.json({ success: true, sentTo: to === 'owner_simulator' ? 'Simulator (no owner number set)' : `+${to}` });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  router.post('/reports/schedule', (req, res) => {
+    const { ownerWhatsapp, dailySummaryTime, dailySummaryEnabled } = req.body || {};
+    if (dailySummaryTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(dailySummaryTime)) {
+      return res.status(400).json({ success: false, message: 'Time must be HH:MM (24h)' });
+    }
+    const current = storage.getSettings();
+    storage.saveSettings({
+      ...current,
+      ownerWhatsapp: String(ownerWhatsapp ?? current.ownerWhatsapp ?? '').replace(/[^\d+ ]/g, '').slice(0, 20),
+      dailySummaryTime: dailySummaryTime || current.dailySummaryTime || '23:00',
+      dailySummaryEnabled: dailySummaryEnabled !== undefined ? Boolean(dailySummaryEnabled) : current.dailySummaryEnabled !== false
+    });
+    return res.json({ success: true });
+  });
 
   // Never send WhatsApp credentials to the browser
   function publicSettings() {

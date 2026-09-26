@@ -9,8 +9,11 @@ const botEngine = require('./services/botEngine');
 const whatsappApi = require('./services/whatsappApi');
 const webhookRoutes = require('./routes/webhook');
 const apiRoutesFactory = require('./routes/api');
+const publicRoutesFactory = require('./routes/public');
+const dailySummary = require('./services/dailySummary');
 
 const app = express();
+app.set('trust proxy', 1); // correct client IPs and https links behind Render/other proxies
 const server = http.createServer(app);
 const adminAuth = require('./middleware/adminAuth');
 
@@ -33,6 +36,11 @@ app.use(express.urlencoded({ extended: true }));
 // Public: Meta WhatsApp webhook (protected by verify token + signature check)
 app.use('/webhook', webhookRoutes);
 app.use('/api/whatsapp/webhook', webhookRoutes); // Alias for clean URL
+
+// Public: guest QR ordering page + its API (rate-limited, no admin data)
+app.use('/order', express.static(path.join(__dirname, 'public', 'order')));
+app.use('/public-api', publicRoutesFactory(io));
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Everything below needs the admin login when ADMIN_PASSWORD is set
 app.use(adminAuth.requireAdmin);
@@ -60,12 +68,15 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+dailySummary.startScheduler();
+
 server.listen(PORT, () => {
   console.log('====================================================');
   console.log(`🚀 Restaurant Order Management Server is running!`);
   console.log(`📍 Kitchen & Admin Panel: http://localhost:${PORT}`);
   console.log(`📱 WhatsApp Bot Simulator: http://localhost:${PORT}/#simulator`);
   console.log(`🏷️ Table QR Code Studio: http://localhost:${PORT}/#tables`);
+  console.log(`🍽️ Guest QR ordering page: http://localhost:${PORT}/order/?table=1`);
   console.log(`🔗 WhatsApp Cloud Webhook URL: http://localhost:${PORT}/webhook`);
   console.log('====================================================');
 });

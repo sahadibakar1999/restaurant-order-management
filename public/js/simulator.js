@@ -146,7 +146,9 @@ class WhatsAppSimulator {
     bubble.className = 'wa-bubble';
 
     // Format bold (*text*), italic (_text_), etc.
-    let formatted = text
+    // Escape first: messages can contain text typed by real WhatsApp customers
+    let formatted = String(text ?? '')
+      .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
       .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
       .replace(/_(.*?)_/g, '<em>$1</em>')
       .replace(/\n/g, '<br>');
