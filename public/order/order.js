@@ -61,8 +61,13 @@
 
   // ---------- Menu ----------
 
+  // Dishes shown right now (Veg only filter)
+  function visibleMenu() {
+    return state.vegOnly ? state.menu.filter(m => m.isVeg) : state.menu;
+  }
+
   function categories() {
-    return [...new Set(state.menu.map(m => m.category))];
+    return [...new Set(visibleMenu().map(m => m.category))];
   }
 
   function renderTabs() {
@@ -87,7 +92,7 @@
     list.innerHTML = categories().map(cat => `
       <section data-section="${escapeHtml(cat)}">
         <h3>${escapeHtml(cat)}</h3>
-        ${state.menu.filter(m => m.category === cat).map(item => `
+        ${visibleMenu().filter(m => m.category === cat).map(item => `
           <article class="dish ${item.inStock ? '' : 'soldout'}">
             <div>
               <div class="dish-name"><span class="diet ${item.isVeg ? 'veg' : 'nonveg'}" title="${item.isVeg ? 'Veg' : 'Non-veg'}"></span>${escapeHtml(item.name)}${item.popular ? ' <span class="badge">Popular</span>' : ''}${item.isSpicy ? ' 🌶️' : ''}</div>
@@ -260,6 +265,7 @@
   const STEPS = ['pending', 'cooking', 'ready', 'served'];
 
   function renderTracking(order) {
+    state.lastStatus = order.status;
     $('trackId').textContent = `#${order.id}`;
     $('trackHeadline').textContent = HEADLINES[order.status] || order.status;
     const idx = order.status === 'completed' ? STEPS.length : STEPS.indexOf(order.status);
@@ -305,6 +311,16 @@
     $('menuView').hidden = false;
     renderMenu();
     renderCartBar();
+    updateMyOrderBar();
+  }
+
+  const STATUS_WORDS = { pending: 'sent to kitchen', cooking: 'is cooking', ready: 'is ready', served: 'served' };
+  function updateMyOrderBar(order) {
+    const saved = store.get();
+    const status = order ? order.status : state.lastStatus;
+    const show = Boolean(saved) && status && !['completed', 'cancelled'].includes(status);
+    $('myOrderBar').hidden = !show;
+    if (show) $('myOrderStatus').textContent = STATUS_WORDS[status] || status;
   }
 
   async function cancelOrder() {
@@ -436,6 +452,19 @@
   $('cancelBtn').addEventListener('click', cancelOrder);
   $('orderMoreBtn').addEventListener('click', showMenu);
   $('inviteBtn').addEventListener('click', shareTableLink);
+  $('myOrderBar').addEventListener('click', async () => {
+    const saved = store.get();
+    if (!saved) return;
+    try {
+      const data = await api(`/orders/${encodeURIComponent(saved.id)}?token=${encodeURIComponent(saved.token)}`);
+      showTracking(data.order);
+    } catch (err) { toast(err.message); }
+  });
+  $('vegOnly').addEventListener('change', (e) => {
+    state.vegOnly = e.target.checked;
+    renderTabs();
+    renderMenu();
+  });
   document.querySelectorAll('[data-waiter]').forEach(b => b.addEventListener('click', () => callWaiter(b.dataset.waiter)));
 
   init();

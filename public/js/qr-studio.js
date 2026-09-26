@@ -63,7 +63,7 @@ class QRStudio {
         <div class="table-big-number">Table ${table.number}</div>
         <div class="table-seats-caption">Capacity: ${table.capacity} Persons</div>
         <div class="table-occupant">${table.occupiedBy
-          ? `🔒 In use by a ${table.occupiedBy.type === 'web' ? 'web QR' : 'WhatsApp'} guest since ${new Date(table.occupiedBy.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          ? `🔒 In use by ${{ web: 'a web QR guest', whatsapp: 'a WhatsApp guest', unclaimed: 'guests (open order)' }[table.occupiedBy.type] || 'guests'} since ${new Date(table.occupiedBy.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
           : '🟢 Free for the next guests'}</div>
         <div class="qr-mode-toggle" role="tablist" aria-label="QR type">
           <button class="qr-mode-btn active" data-mode="web" data-table="${table.number}">🌐 Web order</button>

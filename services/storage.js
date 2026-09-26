@@ -104,7 +104,16 @@ const storage = {
 
   tableSession(number) {
     const table = this.getTable(number);
-    if (!table || !table.session) return null;
+    if (!table) return null;
+    if (!table.session) {
+      // An open order without a claim (placed before table locking, or by
+      // staff) still means guests are sitting there, unless staff freed it since.
+      const active = this.getActiveOrderByTable(number);
+      if (active && (!table.freedAt || new Date(active.createdAt) > new Date(table.freedAt))) {
+        return { type: 'unclaimed', startedAt: active.createdAt, lastActive: active.updatedAt };
+      }
+      return null;
+    }
     const hasActive = Boolean(this.getActiveOrderByTable(number));
     const idleFor = Date.now() - new Date(table.session.lastActive || table.session.startedAt).getTime();
     if (!hasActive && idleFor > this.TABLE_IDLE_MS) return null; // abandoned
@@ -142,7 +151,7 @@ const storage = {
   },
 
   freeTable(number) {
-    return this.updateTable(number, { status: 'vacant', currentOrderId: null, session: null });
+    return this.updateTable(number, { status: 'vacant', currentOrderId: null, session: null, freedAt: new Date().toISOString() });
   },
 
   // Orders
