@@ -75,6 +75,7 @@ function publicOrder(order) {
     tax: order.tax,
     total: order.total,
     notes: order.notes,
+    removedItems: (order.removedItems || []).map(i => ({ name: i.name, quantity: i.quantity, reason: i.reason })),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt
   };

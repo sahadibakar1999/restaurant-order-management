@@ -210,6 +210,33 @@ const storage = {
 
     return newOrder;
   },
+  // Kitchen removes dishes it can't make (e.g. out of stock). Recalculates the
+  // bill; if nothing is left the order is cancelled. Returns { order, removed }.
+  removeOrderItems(orderId, indexes, reason) {
+    const orders = this.getOrders();
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return null;
+    const drop = new Set(indexes);
+    const removed = order.items.filter((_, i) => drop.has(i));
+    if (removed.length === 0) return { order, removed };
+
+    const now = new Date().toISOString();
+    order.items = order.items.filter((_, i) => !drop.has(i));
+    order.removedItems = [...(order.removedItems || []), ...removed.map(i => ({ ...i, reason, time: now }))];
+    const settings = this.getSettings();
+    order.subtotal = order.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    order.tax = Math.round(order.subtotal * (settings.taxPercent || 5) / 100);
+    order.total = order.subtotal + order.tax;
+    order.updatedAt = now;
+    order.history = [...(order.history || []), { status: order.status, time: now, reason: `Removed: ${removed.map(i => i.name).join(', ')} (${reason})` }];
+    this.saveOrders(orders);
+
+    if (order.items.length === 0) {
+      return { order: this.updateOrderStatus(orderId, 'cancelled', `All items unavailable (${reason})`), removed };
+    }
+    return { order, removed };
+  },
+
   // Which status changes are allowed (kitchen can skip ahead, never go back)
   STATUS_FLOW: {
     pending: ['cooking', 'ready', 'served', 'completed', 'cancelled'],

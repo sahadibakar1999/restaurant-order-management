@@ -12,7 +12,22 @@ const apiRoutesFactory = require('./routes/api');
 const publicRoutesFactory = require('./routes/public');
 const dailySummary = require('./services/dailySummary');
 
+const fs = require('fs');
 const app = express();
+
+// Pages are never cached; their CSS/JS links carry a per-deploy version so
+// browsers pick up new files immediately after a deploy.
+const BUILD_ID = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || String(Date.now())).slice(0, 12);
+const htmlCache = new Map();
+function sendVersionedHtml(res, file) {
+  if (!htmlCache.has(file)) {
+    const html = fs.readFileSync(file, 'utf-8')
+      .replace(/((?:src|href)="(?:\/?(?:js|css)\/[^"?]+|order\.(?:js|css)))"/g, `$1?v=${BUILD_ID}"`);
+    htmlCache.set(file, html);
+  }
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(htmlCache.get(file));
+}
 app.set('trust proxy', 1); // correct client IPs and https links behind Render/other proxies
 const server = http.createServer(app);
 const adminAuth = require('./middleware/adminAuth');
@@ -55,7 +70,11 @@ app.use('/webhook', webhookRoutes);
 app.use('/api/whatsapp/webhook', webhookRoutes); // Alias for clean URL
 
 // Public: guest QR ordering page + its API (rate-limited, no admin data)
-app.use('/order', express.static(path.join(__dirname, 'public', 'order'), { maxAge: '10m' }));
+app.get(['/order', '/order/', '/order/index.html'], (req, res, next) => {
+  if (req.path === '/order') return res.redirect(301, `/order/${req.url.slice(6)}`);
+  sendVersionedHtml(res, path.join(__dirname, 'public', 'order', 'index.html'));
+});
+app.use('/order', express.static(path.join(__dirname, 'public', 'order'), { maxAge: '7d', index: false }));
 app.use('/public-api', publicRoutesFactory(io));
 app.get('/health', (req, res) => res.json({ ok: true }));
 
@@ -79,9 +98,11 @@ if (!adminAuth.enabled) {
   console.warn('⚠️  ADMIN_PASSWORD is not set: admin panel and API are open to anyone. Set it before going live.');
 }
 
-// Serve static frontend (admin assets: private cache, short-lived)
+// Admin page (versioned asset links) + static assets (private cache, versioned URLs)
+app.get(['/', '/index.html'], (req, res) => sendVersionedHtml(res, path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public'), {
-  setHeaders: (res) => res.setHeader('Cache-Control', 'private, max-age=300')
+  index: false,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'private, max-age=604800')
 }));
 // Socket.IO client script (normally served by the socket server; needed on serverless)
 app.use('/socket.io', express.static(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist')));
@@ -102,9 +123,7 @@ io.on('connection', (socket) => {
 app.use('/api', (req, res) => res.status(404).json({ success: false, message: 'Not found' }));
 
 // Root fallback to frontend
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('*', (req, res) => sendVersionedHtml(res, path.join(__dirname, 'public', 'index.html')));
 
 // Errors (bad JSON, unexpected crashes): JSON, never a stack trace
 app.use((err, req, res, next) => {

@@ -61,6 +61,47 @@ module.exports = function(io) {
     return res.json({ success: true, order: updated });
   });
 
+  // Kitchen removes selected dishes (out of stock etc.) from an open order
+  router.post('/orders/:id/remove-items', async (req, res) => {
+    const { itemIndexes, markOutOfStock = true } = req.body || {};
+    const reason = typeof req.body?.reason === 'string' && req.body.reason.trim() ? req.body.reason.trim().slice(0, 100) : 'Out of stock';
+    const order = storage.getOrderById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (!['pending', 'cooking', 'ready'].includes(order.status)) {
+      return res.status(409).json({ success: false, message: `Order is already ${order.status}; dishes can't be removed now.` });
+    }
+    const indexes = Array.isArray(itemIndexes)
+      ? [...new Set(itemIndexes.map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < order.items.length))]
+      : [];
+    if (indexes.length === 0) return res.status(400).json({ success: false, message: 'Select at least one dish to remove.' });
+
+    const { order: updated, removed } = storage.removeOrderItems(order.id, indexes, reason);
+
+    // Sold out: hide from the menu so nobody else orders it
+    if (markOutOfStock) {
+      removed.forEach(i => storage.toggleItemStock(i.id, false));
+      if (io) io.emit('menu_updated', { menu: storage.getMenu() });
+    }
+
+    if (io) {
+      io.emit('order_status_updated', { order: updated, timestamp: new Date().toISOString() });
+      if (updated.status === 'cancelled') io.emit('play_sound', { type: 'cancellation', orderId: updated.id, tableNo: updated.tableNo });
+    }
+
+    // Tell WhatsApp customers right away (web guests see it on their tracker)
+    if (updated.channel !== 'web' && updated.customerPhone) {
+      const settings = storage.getSettings();
+      const curr = settings.currency || '₹';
+      const names = removed.map(i => `${i.quantity}x ${i.name}`).join(', ');
+      const text = updated.status === 'cancelled'
+        ? `😔 Sorry! ${names} ${removed.length > 1 ? 'are' : 'is'} unavailable (${reason}), so order #${updated.id} has been cancelled. Please order something else or ask a waiter.`
+        : `😔 Sorry! ${names} ${removed.length > 1 ? 'are' : 'is'} unavailable (${reason}) and was removed from order #${updated.id}.\nNew total: *${curr}${updated.total}*`;
+      await whatsappApi.sendMessage(updated.customerPhone, text).catch(() => {});
+    }
+
+    return res.json({ success: true, order: updated, removed: removed.map(i => i.name) });
+  });
+
   // --- Tables Endpoints ---
 
   router.get('/tables', (req, res) => {

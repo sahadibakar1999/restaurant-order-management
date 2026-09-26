@@ -45,6 +45,7 @@ class RestaurantApp {
     this.orders = [];
     this.currentFilter = 'active';
     this.checkedItems = this.loadCheckedItems();
+    this.selectedItems = new Map(); // orderId -> Set(item index) chosen for removal
     this.timerInterval = null;
     this.activeTab = 'kds';
 
@@ -334,11 +335,13 @@ class RestaurantApp {
       `;
     }
 
-    // Items list HTML with checklist
+    // Items can be selected and removed while the order is still open
+    const canRemove = ['pending', 'cooking', 'ready'].includes(order.status);
+    const selected = this.selectedItems.get(order.id) || new Set();
     const itemsHtml = (order.items || []).map((item, idx) => `
       <li class="order-item-row" id="itemRow-${order.id}-${idx}">
         <div class="item-left">
-          <input type="checkbox" class="item-check-checkbox" title="Mark item cooked" data-check-key="${order.id}-${idx}" ${isCompleted || this.checkedItems.has(`${order.id}-${idx}`) ? 'checked' : ''} ${isCompleted || isCancelled ? 'disabled' : ''}>
+          <input type="checkbox" class="item-check-checkbox" title="${canRemove ? 'Select to remove (e.g. out of stock)' : 'Order is closed'}" data-order-id="${order.id}" data-idx="${idx}" ${selected.has(idx) ? 'checked' : ''} ${canRemove ? '' : 'disabled'}>
           <span class="item-qty-badge">${item.quantity}x</span>
           <span class="item-name-text">
             <span class="veg-dot ${item.isVeg ? 'veg' : 'non-veg'}"></span>
@@ -348,6 +351,11 @@ class RestaurantApp {
         <span class="item-price-text">₹${item.price * item.quantity}</span>
       </li>
     `).join('');
+
+    // Dishes removed earlier (out of stock etc.)
+    const removedHtml = (order.removedItems || []).length
+      ? `<div class="removed-items-box">❌ Removed: ${(order.removedItems || []).map(i => `${i.quantity}x ${escapeHtml(i.name)} <em>(${escapeHtml(i.reason)})</em>`).join(', ')}</div>`
+      : '';
 
     // Notes
     let notesHtml = '';
@@ -419,6 +427,13 @@ class RestaurantApp {
           ${itemsHtml}
         </ul>
         ${notesHtml}
+        ${removedHtml}
+      </div>
+
+      <div class="remove-items-bar" ${selected.size && canRemove ? '' : 'hidden'}>
+        <span class="remove-count">${selected.size} selected</span>
+        <button class="btn-stage btn-remove-items">❌ Remove (out of stock)</button>
+        <button class="btn-link-clear">Clear</button>
       </div>
 
       <div class="order-card-footer">
@@ -432,16 +447,42 @@ class RestaurantApp {
       </div>
     `;
 
-    // Item checklist event
+    // Select dishes -> "Remove (out of stock)" appears
+    const bar = card.querySelector('.remove-items-bar');
+    const syncBar = () => {
+      const set = this.selectedItems.get(order.id) || new Set();
+      bar.hidden = set.size === 0;
+      bar.querySelector('.remove-count').textContent = `${set.size} selected`;
+      const btn = bar.querySelector('.btn-remove-items');
+      btn.dataset.confirm = '';
+      btn.textContent = set.size === (order.items || []).length ? '❌ Remove all (cancels order)' : '❌ Remove (out of stock)';
+    };
     card.querySelectorAll('.item-check-checkbox').forEach(cb => {
       const row = cb.closest('.order-item-row');
-      if (row && cb.checked) row.classList.add('item-done');
+      if (row && cb.checked) row.classList.add('item-selected');
       cb.addEventListener('change', (e) => {
-        if (row) row.classList.toggle('item-done', e.target.checked);
-        const key = e.target.getAttribute('data-check-key');
-        if (e.target.checked) this.checkedItems.add(key); else this.checkedItems.delete(key);
-        this.saveCheckedItems();
+        const idx = Number(e.target.getAttribute('data-idx'));
+        const set = this.selectedItems.get(order.id) || new Set();
+        if (e.target.checked) set.add(idx); else set.delete(idx);
+        if (set.size) this.selectedItems.set(order.id, set); else this.selectedItems.delete(order.id);
+        if (row) row.classList.toggle('item-selected', e.target.checked);
+        syncBar();
       });
+    });
+    if (selected.size) syncBar();
+    bar.querySelector('.btn-link-clear').addEventListener('click', () => {
+      this.selectedItems.delete(order.id);
+      this.renderOrders();
+    });
+    bar.querySelector('.btn-remove-items').addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      if (btn.dataset.confirm !== 'yes') {
+        btn.dataset.confirm = 'yes';
+        btn.textContent = 'Tap again to confirm';
+        setTimeout(() => { if (btn.isConnected && btn.dataset.confirm === 'yes') syncBar(); }, 4000);
+        return;
+      }
+      this.removeItems(order.id);
     });
 
     return card;
@@ -476,6 +517,34 @@ class RestaurantApp {
     } catch (err) {
       console.error('Failed to update status:', err);
       this.showUrgentBanner('⚠️ Network problem: the order was not updated. Please try again.');
+    }
+  }
+
+  async removeItems(orderId) {
+    const set = this.selectedItems.get(orderId);
+    if (!set || !set.size) return;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/remove-items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIndexes: [...set], reason: 'Out of stock', markOutOfStock: true })
+      });
+      const data = await res.json();
+      this.selectedItems.delete(orderId);
+      if (!data.success) {
+        this.showUrgentBanner(`⚠️ ${data.message || 'Could not remove the dishes.'}`);
+        this.loadInitialData();
+        return;
+      }
+      const idx = this.orders.findIndex(o => o.id === orderId);
+      if (idx !== -1) this.orders[idx] = data.order;
+      this.renderOrders();
+      this.updateCounts();
+      const verb = data.order.status === 'cancelled' ? 'Order cancelled' : 'Removed';
+      this.showUrgentBanner(`✅ ${verb}: ${data.removed.join(', ')} marked out of stock. Guest has been notified.`);
+      if (this.activeTab === 'menu') this.loadMenu();
+    } catch (err) {
+      this.showUrgentBanner('⚠️ Network problem: dishes were not removed. Please try again.');
     }
   }
 

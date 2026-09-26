@@ -276,6 +276,12 @@
     $('trackItems').innerHTML = order.items.map(i =>
       `<li><span>${i.quantity}× ${escapeHtml(i.name)}</span><span>${money(i.price * i.quantity)}</span></li>`).join('');
     $('trackTotal').textContent = money(order.total);
+    // Kitchen couldn't make some dishes (e.g. out of stock)
+    const removed = order.removedItems || [];
+    $('trackRemoved').hidden = removed.length === 0;
+    $('trackRemoved').innerHTML = removed.length
+      ? `😔 Sorry, removed by the kitchen: ${removed.map(i => `${i.quantity}× ${escapeHtml(i.name)} (${escapeHtml(i.reason || 'unavailable')})`).join(', ')}. You won't be charged for ${removed.length > 1 ? 'these' : 'it'}.`
+      : '';
 
     const minutes = state.info.allowCancellationMinutes || 5;
     const ageMin = (Date.now() - new Date(order.createdAt).getTime()) / 60000;
