@@ -62,6 +62,12 @@ Open your browser at:
 
 ---
 
+## 🔐 Admin Login
+
+Set `ADMIN_PASSWORD` (and optionally `ADMIN_USER`, default `admin`) before deploying. The Kitchen/Admin panel, API and live updates then require this login. The WhatsApp webhook stays public but is protected by the verify token and Meta's request signature (`WHATSAPP_APP_SECRET`).
+
+---
+
 ## ⚙️ Connecting to Official Meta WhatsApp Cloud API
 
 When ready to use a real phone number for customer orders:
@@ -69,13 +75,14 @@ When ready to use a real phone number for customer orders:
 2. Add the **WhatsApp** product.
 3. In WhatsApp > Configuration, set your Webhook URL:
    - **Callback URL**: `https://<your-domain>/webhook`
-   - **Verify Token**: `RESTAURANT_ORDER_BOT_SECRET_2026`
+   - **Verify Token**: the value of `WHATSAPP_VERIFY_TOKEN` in your `.env`
 4. Under Webhook fields, click **Subscribe** for `messages`.
 5. Add your credentials in `.env`:
    ```env
    WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
    WHATSAPP_ACCESS_TOKEN=your_permanent_access_token
-   WHATSAPP_VERIFY_TOKEN=RESTAURANT_ORDER_BOT_SECRET_2026
+   WHATSAPP_VERIFY_TOKEN=any_long_random_string
+   WHATSAPP_APP_SECRET=your_meta_app_secret
    ```
 
 ---

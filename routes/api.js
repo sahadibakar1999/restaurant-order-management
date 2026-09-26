@@ -248,14 +248,29 @@ module.exports = function(io) {
 
   // --- Settings ---
 
+  // Never send WhatsApp credentials to the browser
+  function publicSettings() {
+    const { metaConfig, ...rest } = storage.getSettings();
+    return {
+      ...rest,
+      metaConfig: {
+        phoneNumberId: (metaConfig && metaConfig.phoneNumberId) || '',
+        wabaId: (metaConfig && metaConfig.wabaId) || '',
+        accessTokenSet: Boolean((metaConfig && metaConfig.accessToken) || process.env.WHATSAPP_ACCESS_TOKEN)
+      }
+    };
+  }
+
   router.get('/settings', (req, res) => {
-    const settings = storage.getSettings();
-    return res.json({ success: true, settings });
+    return res.json({ success: true, settings: publicSettings() });
   });
 
   router.post('/settings', (req, res) => {
-    const updated = storage.saveSettings(req.body);
-    return res.json({ success: true, settings: storage.getSettings() });
+    // WhatsApp credentials are configured through environment variables only
+    const { metaConfig, ...changes } = req.body || {};
+    const current = storage.getSettings();
+    storage.saveSettings({ ...current, ...changes, metaConfig: current.metaConfig });
+    return res.json({ success: true, settings: publicSettings() });
   });
 
   return router;

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const botEngine = require('../services/botEngine');
@@ -13,9 +14,13 @@ router.get('/', (req, res) => {
   const challenge = req.query['hub.challenge'];
 
   const settings = storage.getSettings();
-  const verifyToken = (settings.metaConfig && settings.metaConfig.verifyToken) || 
-    process.env.WHATSAPP_VERIFY_TOKEN || 
-    'RESTAURANT_ORDER_BOT_SECRET_2026';
+  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN ||
+    (settings.metaConfig && settings.metaConfig.verifyToken);
+
+  if (!verifyToken) {
+    console.warn('WhatsApp Webhook Verification Failed: WHATSAPP_VERIFY_TOKEN is not set');
+    return res.sendStatus(403);
+  }
 
   if (mode && token) {
     if (mode === 'subscribe' && token === verifyToken) {
@@ -32,19 +37,30 @@ router.get('/', (req, res) => {
 /**
  * Meta WhatsApp Incoming Messages Webhook
  */
+// Checks Meta's X-Hub-Signature-256 header when WHATSAPP_APP_SECRET is set
+function hasValidSignature(req) {
+  const secret = process.env.WHATSAPP_APP_SECRET;
+  if (!secret) return true;
+  const header = req.get('x-hub-signature-256') || '';
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody || '').digest('hex');
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 router.post('/', async (req, res) => {
+  if (!hasValidSignature(req)) {
+    console.warn('Rejected WhatsApp webhook: invalid signature');
+    return res.sendStatus(401);
+  }
   try {
     const body = req.body;
 
     if (body.object === 'whatsapp_business_account') {
-      if (
-        body.entry &&
-        body.entry[0].changes &&
-        body.entry[0].changes[0].value.messages &&
-        body.entry[0].changes[0].value.messages[0]
-      ) {
-        const messageObj = body.entry[0].changes[0].value.messages[0];
-        const contact = (body.entry[0].changes[0].value.contacts && body.entry[0].changes[0].value.contacts[0]) || {};
+      const value = body.entry?.[0]?.changes?.[0]?.value;
+      if (value?.messages?.[0]) {
+        const messageObj = value.messages[0];
+        const contact = (value.contacts && value.contacts[0]) || {};
         const from = messageObj.from; // Customer phone number
         const senderName = contact.profile ? contact.profile.name : `Guest (${from})`;
 

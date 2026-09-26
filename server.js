@@ -1,7 +1,6 @@
 require('dotenv').config();
 const http = require('http');
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const { Server } = require('socket.io');
 
@@ -13,8 +12,11 @@ const apiRoutesFactory = require('./routes/api');
 
 const app = express();
 const server = http.createServer(app);
+const adminAuth = require('./middleware/adminAuth');
+
+// Same-origin only (no wildcard CORS); Socket.IO requires admin login when enabled.
 const io = new Server(server, {
-  cors: { origin: '*' }
+  allowRequest: (req, callback) => callback(null, adminAuth.isAuthorized(req.headers.authorization))
 });
 
 const PORT = process.env.PORT || 3000;
@@ -24,16 +26,24 @@ botEngine.setSocketIO(io);
 whatsappApi.setSocketIO(io);
 
 // Middlewares
-app.use(cors());
-app.use(express.json());
+// Keep the raw body so the WhatsApp webhook signature can be verified
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
+
+// Public: Meta WhatsApp webhook (protected by verify token + signature check)
+app.use('/webhook', webhookRoutes);
+app.use('/api/whatsapp/webhook', webhookRoutes); // Alias for clean URL
+
+// Everything below needs the admin login when ADMIN_PASSWORD is set
+app.use(adminAuth.requireAdmin);
+if (!adminAuth.enabled) {
+  console.warn('⚠️  ADMIN_PASSWORD is not set: admin panel and API are open to anyone. Set it before going live.');
+}
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes
-app.use('/webhook', webhookRoutes);
-app.use('/api/whatsapp/webhook', webhookRoutes); // Alias for clean URL
 app.use('/api', apiRoutesFactory(io));
 
 // Socket.IO event handler
