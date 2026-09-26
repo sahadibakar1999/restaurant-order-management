@@ -80,6 +80,12 @@ class BotEngine {
       /\b(show|see|view|open)\s+(the\s+)?menu\b/.test(text);
     if (isGreeting || (tableMatch && text.split(/\s+/).length <= 4)) {
       if (detectedTable) {
+        if (!storage.getTable(detectedTable)) {
+          return whatsappApi.sendMessage(userId, `⚠️ We couldn't find *Table ${detectedTable}*. Please scan the QR code on your table again.`);
+        }
+        if (this.tableHeldByOther(detectedTable, userId)) {
+          return whatsappApi.sendMessage(userId, this.occupiedMessage(detectedTable));
+        }
         session.tableNo = detectedTable;
       }
       return this.sendWelcomeMenu(userId, session);
@@ -330,6 +336,8 @@ class BotEngine {
     if (notes.length) msg += `\n📝 Note for kitchen: _${notes.join('; ')}_`;
     if (soldOut.length) msg += `\n\n❌ Sold out right now: ${soldOut.join(', ')}`;
     if (parsed.unmatched.length) msg += `\n\n🤷 Not on our menu: ${parsed.unmatched.map(u => `"${u}"`).join(', ')}`;
+    if (parsed.skipped && parsed.skipped.length) msg += `\n\n⏭️ Skipped (sounds like you don't want it): ${parsed.skipped.map(u => `"${u}"`).join(', ')}`;
+    if (parsed.capped && parsed.capped.length) msg += `\n\n⚠️ Max 20 per dish: ${parsed.capped.join(', ')}. Please ask a waiter for bigger orders.`;
     msg += `\n\n🛒 *Cart total:* ${curr}${cartTotal}`;
 
     return whatsappApi.sendMessage(userId, whatsappApi.buildButtons(msg, [
@@ -380,12 +388,29 @@ class BotEngine {
     ]));
   }
 
+  // Another party (web device or WhatsApp number) already holds this table
+  tableHeldByOther(tableNo, userId) {
+    const held = storage.tableSession(tableNo);
+    return Boolean(held) && !storage.sessionMatches(held, { type: 'whatsapp', id: userId });
+  }
+
+  occupiedMessage(tableNo) {
+    return `🚫 *Table ${tableNo} is already taken* by another guest.\n\n` +
+      `If you're sitting together, one person can place the order for the table, or call a waiter for help.`;
+  }
+
   async confirmOrder(userId, session, metadata = {}) {
     const settings = storage.getSettings();
     const curr = settings.currency || '₹';
 
     if (!session.cart || session.cart.length === 0) {
       return whatsappApi.sendMessage(userId, `⚠️ Your cart is empty! Please choose food items first.`);
+    }
+
+    // One party per table: the first guest to order claims it
+    const claim = storage.claimTable(session.tableNo, { type: 'whatsapp', id: userId });
+    if (!claim.ok) {
+      return whatsappApi.sendMessage(userId, this.occupiedMessage(session.tableNo));
     }
 
     const subtotal = session.cart.reduce((sum, i) => sum + (i.price * i.quantity), 0);

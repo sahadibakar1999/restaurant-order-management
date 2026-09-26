@@ -35,10 +35,14 @@ module.exports = function(io) {
       return res.status(400).json({ success: false, message: 'Invalid status code' });
     }
 
-    const updated = storage.updateOrderStatus(id, status, reason);
-    if (!updated) {
+    const existing = storage.getOrderById(id);
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
+    if (!storage.canChangeStatus(existing, status)) {
+      return res.status(409).json({ success: false, message: `Order is already ${existing.status} and can't be changed to ${status}.` });
+    }
+    const updated = storage.updateOrderStatus(id, status, typeof reason === 'string' ? reason.slice(0, 200) : '');
 
     // Broadcast to kitchen, admin, and simulator
     if (io) {
@@ -68,13 +72,26 @@ module.exports = function(io) {
       const activeOrder = orders.find(o => 
         Number(o.tableNo) === Number(t.number) && !['completed', 'cancelled'].includes(o.status)
       );
+      const session = storage.tableSession(t.number);
+      const { session: _raw, ...rest } = t;
       return {
-        ...t,
-        activeOrder: activeOrder || null
+        ...rest,
+        activeOrder: activeOrder || null,
+        // Who holds the table (never the device token itself)
+        occupiedBy: session ? { type: session.type, since: session.startedAt } : null
       };
     });
 
     return res.json({ success: true, tables: enhanced });
+  });
+
+  // Staff frees a table for the next party (guests left without completing)
+  router.post('/tables/:number/free', (req, res) => {
+    const table = storage.getTable(req.params.number);
+    if (!table) return res.status(404).json({ success: false, message: 'Table not found' });
+    storage.freeTable(table.number);
+    if (io) io.emit('table_freed', { tableNo: table.number });
+    return res.json({ success: true });
   });
 
   // Generate QR Code for a Table (Data URL)
@@ -117,20 +134,24 @@ module.exports = function(io) {
 
   router.post('/menu', (req, res) => {
     const menu = storage.getMenu();
-    const { name, category, price, isVeg, isSpicy, description } = req.body;
+    const { name, category, price, isVeg, isSpicy, description } = req.body || {};
+    const numericPrice = Number(price);
 
-    if (!name || !category || !price) {
-      return res.status(400).json({ success: false, message: 'Name, category, and price are required' });
+    if (typeof name !== 'string' || !name.trim() || typeof category !== 'string' || !category.trim()) {
+      return res.status(400).json({ success: false, message: 'Name and category are required' });
+    }
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0 || numericPrice > 100000) {
+      return res.status(400).json({ success: false, message: 'Price must be a number greater than 0' });
     }
 
     const newItem = {
       id: `item_${Date.now()}`,
-      name: name.trim(),
-      category: category.trim(),
-      price: Number(price),
+      name: name.trim().slice(0, 80),
+      category: category.trim().slice(0, 40),
+      price: Math.round(numericPrice * 100) / 100,
       isVeg: Boolean(isVeg),
       isSpicy: Boolean(isSpicy),
-      description: description ? description.trim() : '',
+      description: typeof description === 'string' ? description.trim().slice(0, 300) : '',
       inStock: true,
       popular: false
     };
@@ -200,9 +221,9 @@ module.exports = function(io) {
 
   router.get('/stats', (req, res) => {
     const orders = storage.getOrders();
-    const todayStr = new Date().toISOString().slice(0, 10);
-
-    const todayOrders = orders.filter(o => (o.createdAt || '').slice(0, 10) === todayStr);
+    // "Today" in the restaurant's timezone, not UTC
+    const todayStr = dailySummary.dayKey(new Date());
+    const todayOrders = orders.filter(o => o.createdAt && dailySummary.dayKey(new Date(o.createdAt)) === todayStr);
     const activeOrders = orders.filter(o => ['pending', 'cooking', 'ready'].includes(o.status));
     const completedToday = todayOrders.filter(o => o.status === 'completed');
     const cancelledToday = todayOrders.filter(o => o.status === 'cancelled');
@@ -260,7 +281,14 @@ module.exports = function(io) {
   // --- Daily Sales Summary ---
 
   router.get('/reports/daily', (req, res) => {
-    const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : undefined;
+    const requested = req.query.date;
+    let day;
+    if (requested !== undefined) {
+      const valid = typeof requested === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(requested) &&
+        !isNaN(new Date(`${requested}T00:00:00Z`)) && new Date(`${requested}T00:00:00Z`).toISOString().slice(0, 10) === requested;
+      if (!valid) return res.status(400).json({ success: false, message: 'Date must be a real date in YYYY-MM-DD format' });
+      day = requested;
+    }
     const summary = dailySummary.buildSummary(day);
     const s = storage.getSettings();
     return res.json({
@@ -317,9 +345,31 @@ module.exports = function(io) {
     return res.json({ success: true, settings: publicSettings() });
   });
 
+  // Only known settings, with sane values
+  function validateSettings(body) {
+    const out = {};
+    const errors = [];
+    const str = (key, max) => {
+      if (body[key] === undefined) return;
+      if (typeof body[key] !== 'string') errors.push(`${key} must be text`);
+      else out[key] = body[key].trim().slice(0, max);
+    };
+    const num = (key, min, max) => {
+      if (body[key] === undefined) return;
+      const n = Number(body[key]);
+      if (body[key] === '' || !Number.isFinite(n) || n < min || n > max) errors.push(`${key} must be a number between ${min} and ${max}`);
+      else out[key] = n;
+    };
+    str('restaurantName', 60); str('tagline', 120); str('currency', 4);
+    str('wifiName', 40); str('wifiPassword', 40); str('whatsappNumber', 20); str('timezone', 40);
+    num('taxPercent', 0, 50); num('allowCancellationMinutes', 0, 60);
+    return { out, errors };
+  }
+
   router.post('/settings', (req, res) => {
     // WhatsApp credentials are configured through environment variables only
-    const { metaConfig, ...changes } = req.body || {};
+    const { out: changes, errors } = validateSettings(req.body || {});
+    if (errors.length) return res.status(400).json({ success: false, message: errors.join('; ') });
     const current = storage.getSettings();
     storage.saveSettings({ ...current, ...changes, metaConfig: current.metaConfig });
     return res.json({ success: true, settings: publicSettings() });

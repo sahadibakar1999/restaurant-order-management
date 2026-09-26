@@ -3,11 +3,48 @@
 // Guest-typed text (names, notes) must never be inserted as raw HTML
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// "4m 05s" under an hour, "1h 05m" after
+function formatDuration(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m < 10 ? '0' : ''}${m}m`;
+  return `${m}m ${sec < 10 ? '0' : ''}${sec}s`;
+}
+
+// Prep timer: runs from order placed until the food is ready (or the order ends)
+function prepTiming(order) {
+  const start = new Date(order.createdAt).getTime();
+  const history = order.history || [];
+  const doneEntry = history.find(h => ['ready', 'served', 'completed'].includes(h.status));
+  const cancelEntry = history.find(h => h.status === 'cancelled');
+  if (order.status === 'cancelled') {
+    const end = cancelEntry ? new Date(cancelEntry.time).getTime() : start;
+    return { running: false, seconds: (end - start) / 1000, label: 'Cancelled after' };
+  }
+  if (doneEntry) {
+    return { running: false, seconds: (new Date(doneEntry.time).getTime() - start) / 1000, label: 'Ready in' };
+  }
+  if (['completed', 'served', 'ready'].includes(order.status)) {
+    return { running: false, seconds: 0, label: 'Done' }; // old orders without history
+  }
+  return { running: true, seconds: (Date.now() - start) / 1000, label: '' };
+}
+
+function timerColor(seconds) {
+  const m = seconds / 60;
+  if (m >= 15) return 'timer-red';
+  if (m >= 8) return 'timer-yellow';
+  return 'timer-green';
+}
+
 class RestaurantApp {
   constructor() {
     this.socket = null;
     this.orders = [];
-    this.currentFilter = 'all';
+    this.currentFilter = 'active';
+    this.checkedItems = this.loadCheckedItems();
     this.timerInterval = null;
     this.activeTab = 'kds';
 
@@ -220,7 +257,8 @@ class RestaurantApp {
     const pending = this.orders.filter(o => o.status === 'pending').length;
     const cooking = this.orders.filter(o => o.status === 'cooking').length;
     const ready = this.orders.filter(o => o.status === 'ready').length;
-    const activeTotal = pending + cooking + ready;
+    const served = this.orders.filter(o => o.status === 'served').length;
+    const activeTotal = pending + cooking + ready + served;
 
     if (this.kdsCountAll) this.kdsCountAll.textContent = activeTotal;
     if (this.kdsCountPending) this.kdsCountPending.textContent = pending;
@@ -237,7 +275,8 @@ class RestaurantApp {
 
     let filtered = this.orders;
     if (this.currentFilter === 'active') {
-      filtered = this.orders.filter(o => ['pending', 'cooking', 'ready'].includes(o.status));
+      // Everything still on the floor: not yet paid (completed) or cancelled
+      filtered = this.orders.filter(o => ['pending', 'cooking', 'ready', 'served'].includes(o.status));
     } else if (this.currentFilter !== 'all') {
       filtered = this.orders.filter(o => o.status === this.currentFilter);
     }
@@ -277,16 +316,12 @@ class RestaurantApp {
       cancelled: '🛑 Cancelled'
     };
 
-    // Calculate time elapsed
-    const createdTime = new Date(order.createdAt).getTime();
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - createdTime) / 1000));
-    const mins = Math.floor(elapsedSeconds / 60);
-    const secs = elapsedSeconds % 60;
-    const timeFormatted = `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
-
-    let timerClass = 'timer-green';
-    if (mins >= 15) timerClass = 'timer-red';
-    else if (mins >= 8) timerClass = 'timer-yellow';
+    // Prep timer stops once the food is ready / the order ends
+    const timing = prepTiming(order);
+    const timerClass = timing.running ? timerColor(timing.seconds) : 'timer-stopped';
+    const timerText = timing.running
+      ? `⏱️ ${formatDuration(timing.seconds)}`
+      : (timing.label === 'Done' ? '✅ Done' : `${timing.label === 'Ready in' ? '✅' : '🛑'} ${timing.label} ${formatDuration(timing.seconds)}`);
 
     // Cancellation banner
     let cancelAlertHtml = '';
@@ -303,11 +338,11 @@ class RestaurantApp {
     const itemsHtml = (order.items || []).map((item, idx) => `
       <li class="order-item-row" id="itemRow-${order.id}-${idx}">
         <div class="item-left">
-          <input type="checkbox" class="item-check-checkbox" title="Mark item cooked" ${isCompleted ? 'checked disabled' : ''}>
+          <input type="checkbox" class="item-check-checkbox" title="Mark item cooked" data-check-key="${order.id}-${idx}" ${isCompleted || this.checkedItems.has(`${order.id}-${idx}`) ? 'checked' : ''} ${isCompleted || isCancelled ? 'disabled' : ''}>
           <span class="item-qty-badge">${item.quantity}x</span>
           <span class="item-name-text">
             <span class="veg-dot ${item.isVeg ? 'veg' : 'non-veg'}"></span>
-            ${item.name}
+            ${escapeHtml(item.name)}
           </span>
         </div>
         <span class="item-price-text">₹${item.price * item.quantity}</span>
@@ -373,8 +408,8 @@ class RestaurantApp {
         </div>
         <div class="order-timing-status">
           <span class="status-badge ${order.status}">${statusLabels[order.status] || order.status}</span>
-          <span class="timer-elapsed ${timerClass}" id="timer-${order.id}" data-time="${order.createdAt}">
-            ⏱️ ${timeFormatted}
+          <span class="timer-elapsed ${timerClass}" id="timer-${order.id}" data-time="${order.createdAt}" data-running="${timing.running ? '1' : '0'}">
+            ${timerText}
           </span>
         </div>
       </div>
@@ -399,9 +434,13 @@ class RestaurantApp {
 
     // Item checklist event
     card.querySelectorAll('.item-check-checkbox').forEach(cb => {
+      const row = cb.closest('.order-item-row');
+      if (row && cb.checked) row.classList.add('item-done');
       cb.addEventListener('change', (e) => {
-        const row = e.target.closest('.order-item-row');
         if (row) row.classList.toggle('item-done', e.target.checked);
+        const key = e.target.getAttribute('data-check-key');
+        if (e.target.checked) this.checkedItems.add(key); else this.checkedItems.delete(key);
+        this.saveCheckedItems();
       });
     });
 
@@ -429,28 +468,36 @@ class RestaurantApp {
           this.renderOrders();
           this.updateCounts();
         }
+      } else {
+        // e.g. someone else already completed/cancelled it: show why and refresh
+        this.showUrgentBanner(`⚠️ ${data.message || 'Could not update the order.'}`);
+        this.loadInitialData();
       }
     } catch (err) {
       console.error('Failed to update status:', err);
+      this.showUrgentBanner('⚠️ Network problem: the order was not updated. Please try again.');
     }
+  }
+
+  // Kitchen checklist ticks survive re-renders and page reloads
+  loadCheckedItems() {
+    try { return new Set(JSON.parse(localStorage.getItem('kdsCheckedItems') || '[]')); } catch { return new Set(); }
+  }
+
+  saveCheckedItems() {
+    try { localStorage.setItem('kdsCheckedItems', JSON.stringify([...this.checkedItems].slice(-500))); } catch { /* storage unavailable */ }
   }
 
   startLiveTimers() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.timerInterval = setInterval(() => {
-      document.querySelectorAll('.timer-elapsed').forEach(elem => {
+      // Only orders still being prepared keep ticking
+      document.querySelectorAll('.timer-elapsed[data-running="1"]').forEach(elem => {
         const iso = elem.getAttribute('data-time');
         if (!iso) return;
-        const created = new Date(iso).getTime();
-        const diff = Math.max(0, Math.floor((Date.now() - created) / 1000));
-        const m = Math.floor(diff / 60);
-        const s = diff % 60;
-        elem.innerHTML = `⏱️ ${m}m ${s < 10 ? '0' : ''}${s}s`;
-
-        elem.className = 'timer-elapsed';
-        if (m >= 15) elem.classList.add('timer-red');
-        else if (m >= 8) elem.classList.add('timer-yellow');
-        else elem.classList.add('timer-green');
+        const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+        elem.textContent = `⏱️ ${formatDuration(diff)}`;
+        elem.className = `timer-elapsed ${timerColor(diff)}`;
       });
     }, 1000);
   }
@@ -483,14 +530,14 @@ class RestaurantApp {
         <div class="menu-card-header">
           <div class="menu-card-title">
             <span class="veg-dot ${item.isVeg ? 'veg' : 'non-veg'}"></span>
-            ${item.name}
+            ${escapeHtml(item.name)}
             ${item.isSpicy ? '🌶️' : ''}
           </div>
-          <span class="menu-card-price">₹${item.price}</span>
+          <span class="menu-card-price">₹${escapeHtml(item.price)}</span>
         </div>
-        <div class="menu-card-desc">${item.description || 'Delicious freshly prepared dish.'}</div>
+        <div class="menu-card-desc">${escapeHtml(item.description || 'Delicious freshly prepared dish.')}</div>
         <div class="menu-card-footer">
-          <span style="font-size:0.78rem; color:#94a3b8;">${item.category}</span>
+          <span style="font-size:0.78rem; color:#94a3b8;">${escapeHtml(item.category)}</span>
           <label class="stock-toggle-label">
             <span style="font-size:0.8rem; color:${item.inStock ? '#34d399' : '#f87171'}">
               ${item.inStock ? 'In Stock' : 'Sold Out'}
@@ -621,7 +668,7 @@ class RestaurantApp {
 
     this.orders.forEach(order => {
       const tr = document.createElement('tr');
-      const itemsSummary = (order.items || []).map(i => `${i.quantity}x ${i.name}`).join(', ');
+      const itemsSummary = escapeHtml((order.items || []).map(i => `${i.quantity}x ${i.name}`).join(', '));
       const timeStr = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       tr.innerHTML = `
@@ -649,7 +696,7 @@ class RestaurantApp {
     const receiptBody = document.getElementById('receiptModalContent');
     const itemsRows = (order.items || []).map(i => `
       <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-        <span>${i.quantity}x ${i.name}</span>
+        <span>${i.quantity}x ${escapeHtml(i.name)}</span>
         <span>₹${i.price * i.quantity}</span>
       </div>
     `).join('');

@@ -55,9 +55,23 @@ app.use('/webhook', webhookRoutes);
 app.use('/api/whatsapp/webhook', webhookRoutes); // Alias for clean URL
 
 // Public: guest QR ordering page + its API (rate-limited, no admin data)
-app.use('/order', express.static(path.join(__dirname, 'public', 'order')));
+app.use('/order', express.static(path.join(__dirname, 'public', 'order'), { maxAge: '10m' }));
 app.use('/public-api', publicRoutesFactory(io));
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+// Vercel Cron: nightly owner summary (Vercel sends "Authorization: Bearer <CRON_SECRET>")
+app.get('/cron/daily-summary', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.get('authorization') !== `Bearer ${secret}`) return res.status(401).json({ success: false });
+  const settings = require('./services/storage').getSettings();
+  if (settings.dailySummaryEnabled === false) return res.json({ success: true, skipped: 'disabled' });
+  try {
+    const { to } = await dailySummary.sendSummary();
+    return res.json({ success: true, sentTo: to });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // Everything below needs the admin login when ADMIN_PASSWORD is set
 app.use(adminAuth.requireAdmin);
@@ -65,8 +79,10 @@ if (!adminAuth.enabled) {
   console.warn('⚠️  ADMIN_PASSWORD is not set: admin panel and API are open to anyone. Set it before going live.');
 }
 
-// Serve static frontend
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend (admin assets: private cache, short-lived)
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'private, max-age=300')
+}));
 // Socket.IO client script (normally served by the socket server; needed on serverless)
 app.use('/socket.io', express.static(path.join(__dirname, 'node_modules', 'socket.io', 'client-dist')));
 
@@ -82,9 +98,24 @@ io.on('connection', (socket) => {
   });
 });
 
+// Unknown API routes: JSON 404 (not the admin page)
+app.use('/api', (req, res) => res.status(404).json({ success: false, message: 'Not found' }));
+
 // Root fallback to frontend
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Errors (bad JSON, unexpected crashes): JSON, never a stack trace
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ success: false, message: 'Invalid request format.' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, message: 'Request too large.' });
+  }
+  console.error('Unhandled error:', err);
+  return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
 });
 
 // On Vercel the app is exported as a function; elsewhere run a normal server

@@ -122,3 +122,11 @@ main { max-width: 720px; margin: 0 auto; padding: 0 16px; }
 
 .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: .9rem; opacity: 0; pointer-events: none; transition: .25s; z-index: 30; max-width: calc(100% - 32px); text-align: center; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.notice { background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; border-radius: var(--radius); padding: 12px 14px; margin-top: 16px; }
+.notice.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.notice p { font-size: .88rem; margin-top: 4px; }
+.invite-card { background: var(--card); border: 1px dashed var(--line); border-radius: var(--radius); padding: 14px; margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.invite-card p { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+.invite-link { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: .8rem; color: var(--ink); background: #fffdfb; }
+.ordering-locked .dish-action, .ordering-locked .ai-box { display: none; }

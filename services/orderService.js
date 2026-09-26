@@ -8,7 +8,8 @@ function buildCart(lines) {
   const cart = [];
   const soldOut = [];
 
-  for (const line of lines || []) {
+  for (const line of Array.isArray(lines) ? lines : []) {
+    if (!line || typeof line !== 'object') continue;
     const item = byId.get(String(line.itemId || line.id));
     const quantity = Math.min(Math.max(parseInt(line.quantity, 10) || 0, 0), 20);
     if (!item || quantity === 0) continue;

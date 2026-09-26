@@ -40,7 +40,9 @@ router.get('/', (req, res) => {
 // Checks Meta's X-Hub-Signature-256 header when WHATSAPP_APP_SECRET is set
 function hasValidSignature(req) {
   const secret = process.env.WHATSAPP_APP_SECRET;
-  if (!secret) return true;
+  // Without the app secret we can't tell real WhatsApp traffic from fakes:
+  // allowed only for local development.
+  if (!secret) return !(process.env.VERCEL || process.env.NODE_ENV === 'production');
   const header = req.get('x-hub-signature-256') || '';
   const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(req.rawBody || '').digest('hex');
   const a = Buffer.from(header);

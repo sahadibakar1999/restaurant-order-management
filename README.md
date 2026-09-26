@@ -56,7 +56,12 @@ A production-ready, full-stack Restaurant Order Management System that allows di
 - Every night (default 23:00, restaurant time) the owner gets a WhatsApp message: sales, average order, web vs WhatsApp orders, busiest hour, average prep time, cancellations and top 5 dishes.
 - Preview, set the owner's number/time, or **Send now** from the Analytics tab.
 
-### 8. 📱 Built-in WhatsApp Smartphone Simulator
+### 8. 🔒 One Party per Table
+- The first guest to order claims the table (web phone or WhatsApp number); others get "Table 3 is already taken".
+- Friends at the same table use the **Share table link** from the tracking screen to order together.
+- The table frees itself when all its orders are completed, after 45 minutes idle with no active order, or when staff press **Free table** in the QR Studio.
+
+### 9. 📱 Built-in WhatsApp Smartphone Simulator
 - Test the complete customer ordering experience right inside your browser without needing a verified Meta WhatsApp Business Account on day one!
 
 ---

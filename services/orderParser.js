@@ -4,14 +4,21 @@
 
 const NUMBER_WORDS = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
-  seven: 7, eight: 8, nine: 9, ten: 10, single: 1, double: 2, couple: 2
+  seven: 7, eight: 8, nine: 9, ten: 10, single: 1, double: 2, couple: 2,
+  // Hindi / Hinglish
+  ek: 1, do: 2, teen: 3, char: 4, chaar: 4, paanch: 5, panch: 5, chhe: 6, che: 6,
+  saat: 7, aath: 8, nau: 9, das: 10
 };
+const MAX_QTY = 20;
+
+// "don't want naan", "no naan", "remove the lassi": the guest does NOT want it
+const NEGATION = /\b(don'?t|dont|do not|no|not|never|without|except|remove|minus|cancel|nahi|nahin|mat)\b/;
 
 const STOPWORDS = new Set([
   'i', 'want', 'would', 'like', 'to', 'order', 'please', 'pls', 'plz', 'get', 'me', 'give',
   'the', 'of', 'some', 'for', 'us', 'we', 'can', 'have', 'need', 'add', 'also', 'more',
   'plate', 'plates', 'portion', 'portions', 'piece', 'pieces', 'pcs', 'glass', 'glasses',
-  'bowl', 'bowls', 'x', 'with', 'and', 'table'
+  'bowl', 'bowls', 'x', 'with', 'and', 'table', 'aur', 'chahiye', 'dena', 'do', 'please', 'bhai'
 ]);
 
 // Modifiers kept as a kitchen note instead of being matched against dish names
@@ -73,7 +80,7 @@ function extractNotes(segment) {
 
 function parseWithRules(text, menu) {
   const segments = text.toLowerCase()
-    .split(/,|;|\n|\+|\band\b|\balso\b|\bplus\b/)
+    .split(/,|;|\n|\+|&|\band\b|\balso\b|\bplus\b|\baur\b|\bthen\b/)
     .map(s => s.trim())
     .filter(Boolean);
 
@@ -81,9 +88,15 @@ function parseWithRules(text, menu) {
   const unmatched = [];
   const ambiguous = [];
   const orderNotes = [];
+  const skipped = [];     // negated ("don't want naan")
+  const capped = [];      // asked for more than MAX_QTY
 
   for (const segment of segments) {
     const { rest, notes } = extractNotes(segment);
+    if (NEGATION.test(rest) && !/^\s*(do not|don'?t)\s+forget\b/.test(rest)) {
+      skipped.push(rest.trim());
+      continue;
+    }
     const hasWords = tokenize(rest).some(t => !STOPWORDS.has(t) && !NUMBER_WORDS[t] && !/^\d+$/.test(t));
     if (!hasWords) {
       // A note on its own ("less spicy") applies to the whole order
@@ -92,7 +105,7 @@ function parseWithRules(text, menu) {
     }
 
     let quantity = 1;
-    const digit = rest.match(/(?:^|\s)(\d{1,2})\s*x?\b|\bx\s*(\d{1,2})\b/);
+    const digit = rest.match(/(?:^|\s)(\d+)\s*x?\b|\bx\s*(\d+)\b/);
     if (digit) {
       quantity = parseInt(digit[1] || digit[2], 10);
     } else {
@@ -102,7 +115,8 @@ function parseWithRules(text, menu) {
 
     const { item, candidates } = matchItem(rest, menu);
     if (item) {
-      items.push({ itemId: item.id, quantity: Math.min(Math.max(quantity, 1), 20), note: notes.join(', ') });
+      if (quantity > MAX_QTY) capped.push(item.name);
+      items.push({ itemId: item.id, quantity: Math.min(Math.max(quantity, 1), MAX_QTY), note: notes.join(', ') });
     } else if (candidates.length) {
       ambiguous.push({ text: rest, options: candidates.map(c => c.name) });
     } else {
@@ -110,7 +124,7 @@ function parseWithRules(text, menu) {
     }
   }
 
-  return { items, unmatched, ambiguous, note: orderNotes.join(', '), source: 'rules' };
+  return { items, unmatched, ambiguous, skipped, capped, note: orderNotes.join(', '), source: 'rules' };
 }
 
 // --- Claude (optional) ---
@@ -169,7 +183,7 @@ async function parseWithClaude(client, text, menu) {
       quantity: Math.min(Math.max(i.quantity || 1, 1), 20),
       note: i.note || ''
     }));
-  return { items, unmatched: parsed.unmatched || [], ambiguous: [], note: '', source: 'ai' };
+  return { items, unmatched: parsed.unmatched || [], ambiguous: [], skipped: [], capped: [], note: '', source: 'ai' };
 }
 
 async function parseOrder(text, menu) {

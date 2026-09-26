@@ -62,6 +62,9 @@ class QRStudio {
         <span class="table-status-pill ${statusClass}">${statusLabel}</span>
         <div class="table-big-number">Table ${table.number}</div>
         <div class="table-seats-caption">Capacity: ${table.capacity} Persons</div>
+        <div class="table-occupant">${table.occupiedBy
+          ? `🔒 In use by a ${table.occupiedBy.type === 'web' ? 'web QR' : 'WhatsApp'} guest since ${new Date(table.occupiedBy.since).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+          : '🟢 Free for the next guests'}</div>
         <div class="qr-mode-toggle" role="tablist" aria-label="QR type">
           <button class="qr-mode-btn active" data-mode="web" data-table="${table.number}">🌐 Web order</button>
           <button class="qr-mode-btn" data-mode="wa" data-table="${table.number}">💬 WhatsApp</button>
@@ -77,6 +80,7 @@ class QRStudio {
           <button class="btn-qr-action btn-print-single" data-table="${table.number}">
             🖨️ Print Card
           </button>
+          ${table.occupiedBy ? `<button class="btn-qr-action btn-free-table" data-table="${table.number}">🔓 Free table</button>` : ''}
         </div>
       `;
 
@@ -106,6 +110,21 @@ class QRStudio {
         const tableNum = btn.getAttribute('data-table');
         btn.parentElement.querySelectorAll('.qr-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
         this.showQR(tableNum, btn.getAttribute('data-mode'));
+      });
+    });
+
+    this.tablesGrid.querySelectorAll('.btn-free-table').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const tableNum = btn.getAttribute('data-table');
+        // Two-step confirm without a blocking dialog
+        if (btn.dataset.confirm !== 'yes') {
+          btn.dataset.confirm = 'yes';
+          btn.textContent = 'Tap again to free';
+          setTimeout(() => { btn.dataset.confirm = ''; btn.textContent = '🔓 Free table'; }, 4000);
+          return;
+        }
+        await fetch(`/api/tables/${tableNum}/free`, { method: 'POST' });
+        this.loadTables();
       });
     });
 

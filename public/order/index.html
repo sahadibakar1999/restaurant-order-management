@@ -19,6 +19,12 @@
   </header>
 
   <main id="menuView">
+    <!-- Table taken by another party / invalid table -->
+    <section class="notice" id="tableNotice" hidden>
+      <strong id="tableNoticeTitle"></strong>
+      <p id="tableNoticeText"></p>
+    </section>
+
     <!-- AI quick order -->
     <section class="ai-box">
       <label for="aiInput" class="ai-label">
@@ -35,7 +41,7 @@
     <nav class="cat-tabs" id="catTabs" aria-label="Menu categories"></nav>
     <div id="menuList" class="menu-list"></div>
 
-    <section class="service-row">
+    <section class="service-row" id="menuServiceRow">
       <p>Need something?</p>
       <div class="service-buttons">
         <button class="btn-ghost" data-waiter="water">💧 Water</button>
@@ -62,6 +68,14 @@
         <button class="btn-ghost danger" id="cancelBtn" hidden>Cancel order</button>
         <button class="btn-primary" id="orderMoreBtn">Order more</button>
       </div>
+    </section>
+    <section class="invite-card" id="inviteCard" hidden>
+      <div>
+        <strong>👥 Ordering with friends?</strong>
+        <p>This table is linked to your phone. Share this link so others at your table can order too.</p>
+      </div>
+      <button class="btn-ghost" id="inviteBtn">Share table link</button>
+      <input class="invite-link" id="inviteLink" readonly hidden aria-label="Table invite link">
     </section>
     <section class="service-row">
       <p>Need something?</p>

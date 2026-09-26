@@ -6,27 +6,40 @@ const storage = require('../services/storage');
 const orderService = require('../services/orderService');
 const orderParser = require('../services/orderParser');
 
-// Small in-memory rate limiter (per IP, per bucket)
+// Small in-memory rate limiter (per IP, per bucket). A whole restaurant can
+// share one Wi-Fi IP, so limits are generous; for orders only successful
+// orders count (see countSuccess), so typos and rejected attempts never block
+// a guest.
 const hits = new Map();
-function rateLimit(bucket, max, windowMs) {
+function limiterEntry(key, windowMs) {
+  const now = Date.now();
+  const entry = hits.get(key) || { count: 0, start: now };
+  if (now - entry.start > windowMs) { entry.count = 0; entry.start = now; }
+  hits.set(key, entry);
+  return entry;
+}
+function rateLimit(bucket, max, windowMs, { countSuccess = false } = {}) {
   return (req, res, next) => {
-    const key = `${bucket}:${req.ip}`;
-    const now = Date.now();
-    const entry = hits.get(key) || { count: 0, start: now };
-    if (now - entry.start > windowMs) { entry.count = 0; entry.start = now; }
-    entry.count += 1;
-    hits.set(key, entry);
-    if (entry.count > max) {
-      return res.status(429).json({ success: false, message: 'Too many requests, please wait a minute.' });
+    const entry = limiterEntry(`${bucket}:${req.ip}`, windowMs);
+    if (entry.count >= max) {
+      return res.status(429).json({ success: false, message: 'Too many requests, please wait a few minutes or ask a waiter.' });
+    }
+    if (!countSuccess) {
+      entry.count += 1;
+    } else {
+      res.on('finish', () => { if (res.statusCode < 400) entry.count += 1; });
     }
     next();
   };
 }
 
 function validTable(tableNo) {
-  const n = parseInt(tableNo, 10);
+  if (!/^\d{1,4}$/.test(String(tableNo ?? '').trim())) return null;
+  const n = Number(tableNo);
   return storage.getTables().some(t => Number(t.number) === n) ? n : null;
 }
+
+const OCCUPIED_MESSAGE = (n) => `Table ${n} is already taken by another guest. If you're sitting together, ask them for the "Invite others at your table" link, or call a waiter.`;
 
 function tokenMatches(order, token) {
   if (!order || !order.trackToken || !token) return false;
@@ -51,6 +64,15 @@ module.exports = function (io) {
     });
   });
 
+  // Is this table real, and can this device order on it?
+  router.get('/tables/:n', (req, res) => {
+    const table = validTable(req.params.n);
+    if (!table) return res.status(404).json({ success: false, message: 'This table does not exist. Please scan the QR code on your table again.' });
+    const session = storage.tableSession(table);
+    const yours = storage.sessionMatches(session, { type: 'web', token: req.query.token });
+    res.json({ success: true, table, available: !session || yours, yours });
+  });
+
   router.get('/menu', (req, res) => {
     const menu = storage.getMenu().map(({ id, name, category, price, isVeg, isSpicy, description, inStock, popular }) =>
       ({ id, name, category, price, isVeg, isSpicy, description, inStock, popular }));
@@ -59,7 +81,8 @@ module.exports = function (io) {
 
   // "2 butter naan and a lassi" -> suggested cart lines (guest confirms before ordering)
   router.post('/parse', rateLimit('parse', 30, 60_000), async (req, res) => {
-    const text = String((req.body && req.body.text) || '').slice(0, 500).trim();
+    const rawText = req.body && req.body.text;
+    const text = (typeof rawText === 'string' ? rawText : '').slice(0, 500).trim();
     if (!text) return res.status(400).json({ success: false, message: 'Type what you would like to order.' });
 
     const menu = storage.getMenu();
@@ -71,19 +94,26 @@ module.exports = function (io) {
       items: result.items.map(i => ({ ...i, name: byId.get(i.itemId).name, price: byId.get(i.itemId).price, inStock: byId.get(i.itemId).inStock })),
       unmatched: result.unmatched,
       ambiguous: result.ambiguous,
+      skipped: result.skipped || [],
+      capped: result.capped || [],
       note: result.note
     });
   });
 
-  router.post('/orders', rateLimit('orders', 6, 10 * 60_000), (req, res) => {
-    const { tableNo, items, name, notes } = req.body || {};
+  router.post('/orders', rateLimit('orders', 30, 10 * 60_000, { countSuccess: true }), (req, res) => {
+    const { tableNo, items, name, notes, tableToken } = req.body || {};
     const table = validTable(tableNo);
     if (!table) return res.status(400).json({ success: false, message: 'Unknown table. Please scan the QR code on your table again.' });
+    if (!Array.isArray(items)) return res.status(400).json({ success: false, message: 'Your cart is empty.' });
 
     const { cart, soldOut } = orderService.buildCart(items);
     if (cart.length === 0) {
       return res.status(400).json({ success: false, message: soldOut.length ? `Sorry, ${soldOut.join(', ')} just sold out.` : 'Your cart is empty.' });
     }
+
+    // One party per table: the first device to order claims it
+    const claim = storage.claimTable(table, { type: 'web', token: typeof tableToken === 'string' ? tableToken : '' });
+    if (!claim.ok) return res.status(409).json({ success: false, code: 'TABLE_OCCUPIED', message: OCCUPIED_MESSAGE(table) });
 
     const guestName = String(name || '').trim().slice(0, 40);
     const { order, trackToken } = orderService.placeOrder({
@@ -95,7 +125,7 @@ module.exports = function (io) {
       channel: 'web'
     }, io);
 
-    res.json({ success: true, soldOut, order: orderService.publicOrder(order), trackToken });
+    res.json({ success: true, soldOut, order: orderService.publicOrder(order), trackToken, tableToken: claim.session.token });
   });
 
   router.get('/orders/:id', (req, res) => {
@@ -108,6 +138,9 @@ module.exports = function (io) {
     const order = storage.getOrderById(req.params.id);
     if (!tokenMatches(order, req.body && req.body.token)) return res.status(404).json({ success: false, message: 'Order not found' });
 
+    if (order.status === 'cancelled') {
+      return res.json({ success: true, order: orderService.publicOrder(order) });
+    }
     const minutes = storage.getSettings().allowCancellationMinutes || 5;
     const ageMin = (Date.now() - new Date(order.createdAt).getTime()) / 60000;
     if (order.status !== 'pending' || ageMin > minutes) {

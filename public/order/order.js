@@ -12,12 +12,25 @@
     trackTimer: null
   };
 
-  const storageKey = `order-track-table-${tableNo}`;
-  const store = {
-    get() { try { return JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch { return null; } },
-    set(v) { try { localStorage.setItem(storageKey, JSON.stringify(v)); } catch { /* private mode */ } },
-    clear() { try { localStorage.removeItem(storageKey); } catch { /* private mode */ } }
-  };
+  // Small localStorage helpers (private mode / blocked storage just means no memory)
+  function keyStore(key) {
+    return {
+      get() { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } },
+      set(v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* unavailable */ } },
+      clear() { try { localStorage.removeItem(key); } catch { /* unavailable */ } }
+    };
+  }
+  const store = keyStore(`order-track-table-${tableNo}`);       // last order to track
+  const tableTokenStore = keyStore(`table-token-${tableNo}`);   // proof this phone holds the table
+  const cartStore = keyStore(`order-cart-table-${tableNo}`);    // cart survives a refresh
+
+  // Invite link from the person holding the table: ?table=3&join=<token>
+  const joinToken = params.get('join');
+  if (tableNo && joinToken && /^[a-f0-9]{16,64}$/.test(joinToken)) {
+    tableTokenStore.set(joinToken);
+    params.delete('join');
+    history.replaceState(null, '', `${location.pathname}?${params.toString()}`);
+  }
 
   const money = (n) => `${state.info ? state.info.currency : '₹'}${Number(n).toLocaleString('en-IN')}`;
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -37,7 +50,12 @@
       body: options.body ? JSON.stringify(options.body) : undefined
     });
     const data = await res.json().catch(() => ({ success: false, message: 'Network error' }));
-    if (!res.ok || !data.success) throw new Error(data.message || 'Something went wrong');
+    if (!res.ok || !data.success) {
+      const error = new Error(data.message || 'Something went wrong');
+      error.code = data.code;
+      error.status = res.status;
+      throw error;
+    }
     return data;
   }
 
@@ -92,6 +110,7 @@
     if (!item || !item.inStock) return;
     qty = Math.max(0, Math.min(qty, 20));
     if (qty === 0) state.cart.delete(id); else state.cart.set(id, qty);
+    cartStore.set([...state.cart.entries()]);
     refreshItem(id);
     renderCartBar();
     if (!$('sheet').hidden) renderSheet();
@@ -178,6 +197,8 @@
       if (added.length) parts.push(`Added <strong>${added.map(escapeHtml).join(', ')}</strong>.`);
       if (data.ambiguous.length) parts.push(`Which one for “${escapeHtml(data.ambiguous[0].text)}”? ${data.ambiguous[0].options.map(escapeHtml).join(' / ')}`);
       if (data.unmatched.length) parts.push(`Not on the menu: ${data.unmatched.map(u => `“${escapeHtml(u)}”`).join(', ')}.`);
+      if (data.skipped && data.skipped.length) parts.push(`Skipped (sounds like you don't want it): ${data.skipped.map(u => `“${escapeHtml(u)}”`).join(', ')}.`);
+      if (data.capped && data.capped.length) parts.push(`Max 20 per dish online: ${data.capped.map(escapeHtml).join(', ')}. Ask a waiter for bigger orders.`);
       if (!parts.length) parts.push('Sorry, I couldn’t find those dishes. Try the menu below.');
       out.innerHTML = parts.join(' ');
       out.hidden = false;
@@ -204,16 +225,23 @@
           tableNo,
           items: [...state.cart.entries()].map(([itemId, quantity]) => ({ itemId, quantity })),
           name: $('guestName').value,
-          notes: $('orderNotes').value
+          notes: $('orderNotes').value,
+          tableToken: tableTokenStore.get() || ''
         }
       });
       if (data.soldOut && data.soldOut.length) toast(`Sold out and removed: ${data.soldOut.join(', ')}`);
       state.cart.clear();
+      cartStore.clear();
       $('orderNotes').value = '';
       closeSheet();
+      if (data.tableToken) tableTokenStore.set(data.tableToken);
       store.set({ id: data.order.id, token: data.trackToken });
       showTracking(data.order);
     } catch (err) {
+      if (err.code === 'TABLE_OCCUPIED') {
+        closeSheet();
+        showTableNotice('taken');
+      }
       toast(err.message);
     } finally {
       btn.disabled = false;
@@ -253,6 +281,7 @@
     $('trackView').hidden = false;
     $('cartBar').hidden = true;
     renderTracking(order);
+    $('inviteCard').hidden = !tableTokenStore.get();
     clearInterval(state.trackTimer);
     state.trackTimer = setInterval(pollTracking, 5000);
     window.scrollTo({ top: 0 });
@@ -297,6 +326,45 @@
     }
   }
 
+  // ---------- Table ownership ----------
+
+  function showTableNotice(kind, message) {
+    const notice = $('tableNotice');
+    notice.hidden = false;
+    notice.classList.toggle('error', kind === 'invalid');
+    if (kind === 'taken') {
+      $('tableNoticeTitle').textContent = `Table ${tableNo} is already taken`;
+      $('tableNoticeText').textContent = 'Another guest is ordering for this table. If you are sitting together, ask them for their "Share table link", or call a waiter.';
+      document.body.classList.add('ordering-locked');
+      $('cartBar').hidden = true;
+    } else {
+      $('tableNoticeTitle').textContent = 'Table not found';
+      $('tableNoticeText').textContent = message || 'Please scan the QR code on your table again.';
+      document.body.classList.add('ordering-locked');
+      $('menuServiceRow').hidden = true;
+    }
+  }
+
+  async function shareTableLink() {
+    const token = tableTokenStore.get();
+    if (!token) return;
+    const link = `${location.origin}/order/?table=${tableNo}&join=${token}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Order at Table ${tableNo}`, text: `Join our table order (Table ${tableNo})`, url: link });
+        return;
+      }
+      await navigator.clipboard.writeText(link);
+      toast('Link copied. Send it to your friends at the table.');
+    } catch {
+      // Share sheet closed or clipboard blocked: show the link to copy by hand
+      const box = $('inviteLink');
+      box.hidden = false;
+      box.value = link;
+      box.select();
+    }
+  }
+
   async function callWaiter(type) {
     try {
       const data = await api('/waiter', { method: 'POST', body: { tableNo, type } });
@@ -313,6 +381,7 @@
       $('restaurantName').textContent = 'Scan the QR on your table';
       $('menuList').innerHTML = `<p class="empty">This link is missing a table number. Please scan the QR code on your table.</p>`;
       document.querySelector('.ai-box').hidden = true;
+      $('menuServiceRow').hidden = true;
       return;
     }
     $('tableChip').textContent = `Table ${tableNo}`;
@@ -324,12 +393,26 @@
       document.title = `${info.restaurantName} · Table ${tableNo}`;
       $('restaurantName').textContent = info.restaurantName;
       $('tagline').textContent = info.tagline || '';
+      // Restore a cart from before a refresh (only items still on the menu and in stock)
+      (cartStore.get() || []).forEach(([id, qty]) => {
+        const item = state.menu.find(m => m.id === id);
+        if (item && item.inStock && qty > 0) state.cart.set(id, Math.min(qty, 20));
+      });
       renderTabs();
       renderMenu();
       renderCartBar();
     } catch (err) {
       $('menuList').innerHTML = `<p class="empty">Couldn’t load the menu. Please refresh.</p>`;
       return;
+    }
+
+    // Is this a real table, and is it free (or already ours)?
+    try {
+      const check = await api(`/tables/${tableNo}?token=${encodeURIComponent(tableTokenStore.get() || '')}`);
+      if (!check.available) showTableNotice('taken');
+      $('inviteCard').hidden = !check.yours;
+    } catch (err) {
+      if (err.status === 404) { showTableNotice('invalid', err.message); return; }
     }
 
     const saved = store.get();
@@ -352,6 +435,7 @@
   $('aiInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') aiOrder(); });
   $('cancelBtn').addEventListener('click', cancelOrder);
   $('orderMoreBtn').addEventListener('click', showMenu);
+  $('inviteBtn').addEventListener('click', shareTableLink);
   document.querySelectorAll('[data-waiter]').forEach(b => b.addEventListener('click', () => callWaiter(b.dataset.waiter)));
 
   init();
