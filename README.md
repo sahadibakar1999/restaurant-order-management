@@ -88,6 +88,7 @@ Open your browser at:
 | `OWNER_WHATSAPP` | Optional. Owner's number for the daily summary (can also be set in the UI) |
 | `PUBLIC_BASE_URL` | Optional. Public URL used inside QR codes (auto-detected otherwise) |
 | `WHATSAPP_*` | Meta WhatsApp Cloud API credentials (see below) |
+| `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | Shared database for serverless hosting (Vercel). Alternative: `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Upstash Redis) |
 
 ---
 
