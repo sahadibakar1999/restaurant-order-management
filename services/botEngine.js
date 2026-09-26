@@ -6,7 +6,10 @@ const orderService = require('./orderService');
 // In-memory customer sessions
 // Key: customerId (phone number or simulator ID)
 // Value: { tableNo, state, cart: [ { itemId, name, price, quantity, isVeg } ], activeCategory }
-const sessions = new Map();
+// (kept in Redis on serverless hosting so a chat survives across instances)
+const sharedStore = require('./sharedStore');
+const localSessions = new Map();
+const sessions = sharedStore.enabled ? sharedStore.sessions : localSessions;
 
 class BotEngine {
   constructor(io) {

@@ -42,6 +42,14 @@ whatsappApi.setSocketIO(io);
 app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
+// Serverless: load shared state (Upstash Redis) per request, save before responding
+const sharedStore = require('./services/sharedStore');
+app.use((req, res, next) => {
+  // Static files never touch data; skip the Redis round trip for them
+  if (req.method === 'GET' && /\.(js|css|png|svg|ico|map|html)$/.test(req.path)) return next();
+  return sharedStore.middleware(req, res, next);
+});
+
 // Public: Meta WhatsApp webhook (protected by verify token + signature check)
 app.use('/webhook', webhookRoutes);
 app.use('/api/whatsapp/webhook', webhookRoutes); // Alias for clean URL

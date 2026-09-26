@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const sharedStore = require('./sharedStore');
 
 const SEED_DIR = path.join(__dirname, '..', 'data');
 
@@ -20,6 +21,7 @@ const DATA_DIR = resolveDataDir();
 
 // Helper to safely read JSON
 function readJson(filename, defaultValue = []) {
+  if (sharedStore.enabled) return sharedStore.read(filename.replace('.json', ''));
   const filePath = path.join(DATA_DIR, filename);
   try {
     if (!fs.existsSync(filePath)) {
@@ -36,6 +38,7 @@ function readJson(filename, defaultValue = []) {
 
 // Helper to safely write JSON
 function writeJson(filename, data) {
+  if (sharedStore.enabled) return sharedStore.write(filename.replace('.json', ''), data);
   const filePath = path.join(DATA_DIR, filename);
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
