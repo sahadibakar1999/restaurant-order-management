@@ -1,0 +1,16 @@
+{
+  "restaurantName": "Royal Spice Bistro",
+  "tagline": "Authentic Flavours & Seamless Dining",
+  "currency": "₹",
+  "taxPercent": 5,
+  "wifiName": "RoyalSpice_Guest",
+  "wifiPassword": "tastyfood123",
+  "whatsappNumber": "+91 90000 00000",
+  "allowCancellationMinutes": 5,
+  "metaConfig": {
+    "phoneNumberId": "",
+    "wabaId": "",
+    "accessToken": "",
+    "verifyToken": "RESTAURANT_ORDER_BOT_SECRET_2026"
+  }
+}

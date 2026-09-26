@@ -1,0 +1,244 @@
+[
+  {
+    "id": "ORD-265687",
+    "tableNo": 1,
+    "customerPhone": "+91 98765 12345",
+    "customerName": "Guest (Table 1)",
+    "status": "cooking",
+    "items": [
+      {
+        "id": "item_6",
+        "name": "Dal Makhani Grand",
+        "price": 240,
+        "quantity": 1,
+        "isVeg": true
+      },
+      {
+        "id": "item_9",
+        "name": "Butter Garlic Naan",
+        "price": 65,
+        "quantity": 1,
+        "isVeg": true
+      }
+    ],
+    "subtotal": 305,
+    "tax": 15,
+    "total": 320,
+    "notes": "",
+    "createdAt": "2026-09-25T11:21:52.656Z",
+    "updatedAt": "2026-09-25T11:22:00.530Z",
+    "history": [
+      {
+        "status": "pending",
+        "time": "2026-09-25T11:21:52.656Z"
+      },
+      {
+        "status": "cooking",
+        "time": "2026-09-25T11:22:00.530Z",
+        "reason": ""
+      }
+    ]
+  },
+  {
+    "id": "ORD-365016",
+    "tableNo": 1,
+    "customerPhone": "+91 98765 12345",
+    "customerName": "Guest (Table 1)",
+    "status": "completed",
+    "items": [
+      {
+        "id": "item_5",
+        "name": "Paneer Butter Masala",
+        "price": 290,
+        "quantity": 1,
+        "isVeg": true
+      },
+      {
+        "id": "item_10",
+        "name": "Tandoori Roti (Butter)",
+        "price": 35,
+        "quantity": 1,
+        "isVeg": true
+      }
+    ],
+    "subtotal": 325,
+    "tax": 16,
+    "total": 341,
+    "notes": "",
+    "createdAt": "2026-09-25T11:06:33.650Z",
+    "updatedAt": "2026-09-25T11:06:48.134Z",
+    "history": [
+      {
+        "status": "pending",
+        "time": "2026-09-25T11:06:33.650Z"
+      },
+      {
+        "status": "cooking",
+        "time": "2026-09-25T11:06:40.443Z",
+        "reason": ""
+      },
+      {
+        "status": "ready",
+        "time": "2026-09-25T11:06:45.160Z",
+        "reason": ""
+      },
+      {
+        "status": "served",
+        "time": "2026-09-25T11:06:46.769Z",
+        "reason": ""
+      },
+      {
+        "status": "completed",
+        "time": "2026-09-25T11:06:48.134Z",
+        "reason": ""
+      }
+    ]
+  },
+  {
+    "id": "ORD-637612",
+    "tableNo": 5,
+    "customerPhone": "+919876543210",
+    "customerName": "Simulator Guest",
+    "status": "cancelled",
+    "items": [
+      {
+        "id": "item_1",
+        "name": "Paneer Tikka Angaara",
+        "price": 260,
+        "quantity": 1,
+        "isVeg": true
+      }
+    ],
+    "subtotal": 260,
+    "tax": 13,
+    "total": 273,
+    "notes": "",
+    "createdAt": "2026-09-25T10:55:16.376Z",
+    "updatedAt": "2026-09-25T10:55:53.419Z",
+    "history": [
+      {
+        "status": "pending",
+        "time": "2026-09-25T10:55:16.376Z"
+      },
+      {
+        "status": "cooking",
+        "time": "2026-09-25T10:55:35.060Z",
+        "reason": ""
+      },
+      {
+        "status": "cancelled",
+        "time": "2026-09-25T10:55:53.419Z",
+        "reason": "Cancelled by customer via WhatsApp"
+      }
+    ],
+    "cancelReason": "Cancelled by customer via WhatsApp"
+  },
+  {
+    "id": "ORD-796426",
+    "tableNo": 1,
+    "customerPhone": "+91 98765 12345",
+    "customerName": "Guest (Table 1)",
+    "status": "completed",
+    "items": [
+      {
+        "id": "item_9",
+        "name": "Butter Garlic Naan",
+        "price": 65,
+        "quantity": 1,
+        "isVeg": true
+      },
+      {
+        "id": "item_5",
+        "name": "Paneer Butter Masala",
+        "price": 290,
+        "quantity": 1,
+        "isVeg": true
+      }
+    ],
+    "subtotal": 355,
+    "tax": 18,
+    "total": 373,
+    "notes": "",
+    "createdAt": "2026-09-25T10:53:17.964Z",
+    "updatedAt": "2026-09-25T11:05:15.176Z",
+    "history": [
+      {
+        "status": "pending",
+        "time": "2026-09-25T10:53:17.964Z"
+      },
+      {
+        "status": "cooking",
+        "time": "2026-09-25T11:05:11.580Z",
+        "reason": ""
+      },
+      {
+        "status": "served",
+        "time": "2026-09-25T11:05:13.486Z",
+        "reason": ""
+      },
+      {
+        "status": "completed",
+        "time": "2026-09-25T11:05:15.176Z",
+        "reason": ""
+      }
+    ]
+  },
+  {
+    "id": "ORD-1001",
+    "tableNo": 2,
+    "customerPhone": "+91 98765 43210",
+    "customerName": "Rahul Sharma",
+    "status": "completed",
+    "items": [
+      {
+        "id": "item_5",
+        "name": "Paneer Butter Masala",
+        "price": 290,
+        "quantity": 1,
+        "isVeg": true
+      },
+      {
+        "id": "item_9",
+        "name": "Butter Garlic Naan",
+        "price": 65,
+        "quantity": 2,
+        "isVeg": true
+      },
+      {
+        "id": "item_13",
+        "name": "Fresh Lime Soda",
+        "price": 90,
+        "quantity": 1,
+        "isVeg": true
+      }
+    ],
+    "subtotal": 510,
+    "tax": 25.5,
+    "total": 535.5,
+    "notes": "Less spicy please",
+    "createdAt": "2026-09-25T15:15:00.000Z",
+    "updatedAt": "2026-09-25T15:45:00.000Z",
+    "history": [
+      {
+        "status": "pending",
+        "time": "2026-09-25T15:15:00.000Z"
+      },
+      {
+        "status": "cooking",
+        "time": "2026-09-25T15:18:00.000Z"
+      },
+      {
+        "status": "ready",
+        "time": "2026-09-25T15:32:00.000Z"
+      },
+      {
+        "status": "served",
+        "time": "2026-09-25T15:35:00.000Z"
+      },
+      {
+        "status": "completed",
+        "time": "2026-09-25T15:45:00.000Z"
+      }
+    ]
+  }
+]

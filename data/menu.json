@@ -1,0 +1,178 @@
+[
+  {
+    "id": "item_1",
+    "name": "Paneer Tikka Angaara",
+    "category": "Starters",
+    "price": 260,
+    "isVeg": true,
+    "isSpicy": true,
+    "description": "Char-grilled cottage cheese cubes marinated in tandoori spices and smoked mustard oil.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_2",
+    "name": "Crispy Corn & Water Chestnut",
+    "category": "Starters",
+    "price": 220,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Golden crispy sweet corn tossed with spring onions, bell peppers and mild pepper salt.",
+    "inStock": true,
+    "popular": false
+  },
+  {
+    "id": "item_3",
+    "name": "Chicken Malai Tikka",
+    "category": "Starters",
+    "price": 320,
+    "isVeg": false,
+    "isSpicy": false,
+    "description": "Tender chicken chunks marinated in rich cream, cashew paste, cardamom and grilled in clay oven.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_4",
+    "name": "Mutton Seekh Kebab",
+    "category": "Starters",
+    "price": 380,
+    "isVeg": false,
+    "isSpicy": true,
+    "description": "Minced lamb blended with aromatic herbs, mint and roasted spices, skewered to perfection.",
+    "inStock": true,
+    "popular": false
+  },
+  {
+    "id": "item_5",
+    "name": "Paneer Butter Masala",
+    "category": "Main Course",
+    "price": 290,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Soft cottage cheese simmered in rich satin-smooth tomato, cashew and butter gravy.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_6",
+    "name": "Dal Makhani Grand",
+    "category": "Main Course",
+    "price": 240,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Slow-cooked black lentils simmered overnight with cream, butter and plum tomatoes.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_7",
+    "name": "Butter Chicken Royal",
+    "category": "Main Course",
+    "price": 360,
+    "isVeg": false,
+    "isSpicy": false,
+    "description": "Tandoori chicken pieces cooked in velvety makhani sauce infused with fenugreek and butter.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_8",
+    "name": "Kadhai Paneer",
+    "category": "Main Course",
+    "price": 280,
+    "isVeg": true,
+    "isSpicy": true,
+    "description": "Cottage cheese, bell peppers, and freshly ground coriander-cumin spices cooked in a cast iron wok.",
+    "inStock": true,
+    "popular": false
+  },
+  {
+    "id": "item_9",
+    "name": "Butter Garlic Naan",
+    "category": "Breads & Rice",
+    "price": 65,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Traditional tandoori flatbread brushed with roasted garlic butter and cilantro.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_10",
+    "name": "Tandoori Roti (Butter)",
+    "category": "Breads & Rice",
+    "price": 35,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Whole wheat bread baked in tandoor and brushed with fresh butter.",
+    "inStock": true,
+    "popular": false
+  },
+  {
+    "id": "item_11",
+    "name": "Dum Biryani (Chicken)",
+    "category": "Breads & Rice",
+    "price": 340,
+    "isVeg": false,
+    "isSpicy": true,
+    "description": "Aromatic long-grain basmati rice layered with spiced chicken, saffron, mint and slow dum cooked.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_12",
+    "name": "Jeera Rice",
+    "category": "Breads & Rice",
+    "price": 160,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Fragrant basmati rice tempered with cumin seeds and desi ghee.",
+    "inStock": true,
+    "popular": false
+  },
+  {
+    "id": "item_13",
+    "name": "Fresh Lime Soda (Sweet/Salt)",
+    "category": "Beverages",
+    "price": 90,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Refreshing sparkling soda with fresh key lime juice, rock salt and mint.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_14",
+    "name": "Mango Lassi Royale",
+    "category": "Beverages",
+    "price": 130,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Thick traditional yogurt shake blended with Alphonso mango pulp and saffron strands.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_15",
+    "name": "Gulab Jamun with Rabdi",
+    "category": "Desserts",
+    "price": 140,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Warm golden milk dumplings soaked in cardamom sugar syrup, served with creamy chilled rabdi.",
+    "inStock": true,
+    "popular": true
+  },
+  {
+    "id": "item_16",
+    "name": "Chocolate Sizzling Brownie",
+    "category": "Desserts",
+    "price": 180,
+    "isVeg": true,
+    "isSpicy": false,
+    "description": "Warm walnut fudge brownie served on a sizzler plate topped with vanilla bean ice cream and hot chocolate sauce.",
+    "inStock": true,
+    "popular": false
+  }
+]

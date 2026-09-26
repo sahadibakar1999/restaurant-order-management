@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Royal Spice Bistro - WhatsApp QR Kitchen & Order Management</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Socket.IO Client -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+
+  <!-- Urgent Notification Banner (Waiter calls, Emergency cancellations) -->
+  <div class="urgent-banner" id="urgentBanner">
+    <div class="urgent-banner-content">
+      <span style="font-size: 1.2rem;">⚠️</span>
+      <span id="urgentBannerText">High priority kitchen notification</span>
+    </div>
+    <button class="urgent-banner-btn" id="btnDismissBanner">Dismiss</button>
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-logo-badge">👑</div>
+      <div>
+        <h1 class="brand-title">Royal Spice Bistro</h1>
+        <p class="brand-subtitle">Smart QR & WhatsApp Order Management</p>
+      </div>
+    </div>
+
+    <!-- Center Navigation Tabs -->
+    <nav class="header-center-nav">
+      <button class="nav-tab-btn active" data-tab="kds" id="tabBtnKds">
+        <span>👨‍🍳 Kitchen Display</span>
+        <span class="badge-pill" id="kdsNavBadge">0</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="simulator" id="tabBtnSimulator">
+        <span>📱 WhatsApp Simulator</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="tables" id="tabBtnTables">
+        <span>🏷️ Tables & QR Studio</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="menu" id="tabBtnMenu">
+        <span>📖 Menu Manager</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="analytics" id="tabBtnAnalytics">
+        <span>📊 Analytics</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="setup" id="tabBtnSetup">
+        <span>⚙️ WhatsApp API</span>
+      </button>
+    </nav>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <div class="live-indicator">
+        <div class="pulse-dot"></div>
+        <span>Live Sync Active</span>
+      </div>
+      <button class="btn-icon active-audio" id="btnAudioToggle" title="Audio Chimes: ON">
+        🔔
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Views -->
+  <main class="app-container">
+
+    <!-- ==============================================
+         VIEW 1: KITCHEN DISPLAY SYSTEM (KDS)
+         ============================================== -->
+    <section class="view-section active" id="view-kds">
+      <div class="kds-header">
+        <div class="kds-title-group">
+          <h2>👨‍🍳 Kitchen Display & Live Orders</h2>
+          <p>Real-time order queue with live running timers and instant customer cancellation alerts.</p>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="kds-filter-bar">
+          <button class="filter-btn active" data-filter="all">
+            All Active <span class="count-tag" id="kdsCountAll">0</span>
+          </button>
+          <button class="filter-btn" data-filter="pending">
+            ⏳ Pending <span class="count-tag" id="kdsCountPending">0</span>
+          </button>
+          <button class="filter-btn" data-filter="cooking">
+            🔥 Cooking <span class="count-tag" id="kdsCountCooking">0</span>
+          </button>
+          <button class="filter-btn" data-filter="ready">
+            🔔 Ready <span class="count-tag" id="kdsCountReady">0</span>
+          </button>
+          <button class="filter-btn" data-filter="served">
+            🍽️ Served
+          </button>
+          <button class="filter-btn" data-filter="cancelled">
+            🛑 Cancelled
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Order Cards Grid -->
+      <div class="orders-grid" id="ordersGrid">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- ==============================================
+         VIEW 2: WHATSAPP CUSTOMER SIMULATOR
+         ============================================== -->
+    <section class="view-section" id="view-simulator">
+      <div class="simulator-layout">
+
+        <!-- Controls & Instructions Panel -->
+        <div class="simulator-controls-panel">
+          <h3 class="panel-title">📱 WhatsApp Bot Simulator</h3>
+          <p class="panel-subtitle">
+            Experience exactly what a dining customer sees when scanning the Table QR code or messaging the restaurant
+            on WhatsApp.
+          </p>
+
+          <div class="control-field">
+            <label for="simTableSelect">Select Customer Table</label>
+            <select id="simTableSelect">
+              <option value="1">Table 1 (2 Seater)</option>
+              <option value="2">Table 2 (4 Seater)</option>
+              <option value="3" selected>Table 3 (4 Seater)</option>
+              <option value="4">Table 4 (6 Seater)</option>
+              <option value="5">Table 5 (2 Seater)</option>
+              <option value="6">Table 6 (8 Seater)</option>
+              <option value="7">Table 7 (4 Seater)</option>
+              <option value="8">Table 8 (4 Seater)</option>
+            </select>
+          </div>
+
+          <div class="control-field">
+            <label>One-Click Quick Actions</label>
+            <div class="quick-action-chips">
+              <button class="chip-btn" data-text="Hi Table {table}">👋 "Hi Table {table}" (Scan QR)</button>
+              <button class="chip-btn" data-text="Menu">🍽️ "Menu"</button>
+              <button class="chip-btn" data-text="Paneer Butter Masala">🍛 "Paneer Butter Masala"</button>
+              <button class="chip-btn" data-text="Butter Garlic Naan">🫓 "Butter Garlic Naan"</button>
+              <button class="chip-btn" data-text="btn_confirm_order">✅ "Confirm Order"</button>
+              <button class="chip-btn" data-text="Check Order">📋 "Check Order Status"</button>
+              <button class="chip-btn" data-text="Cancel Order">❌ "Cancel Order"</button>
+              <button class="chip-btn" data-text="Water">💧 "Request Water"</button>
+              <button class="chip-btn" data-text="Bill">💵 "Request Bill"</button>
+            </div>
+          </div>
+
+          <div
+            style="background: rgba(15,23,42,0.6); padding: 14px; border-radius: 10px; font-size: 0.82rem; color: #94a3b8; border: 1px solid var(--border-color); margin-top: 20px;">
+            <strong style="color: #f8fafc;">💡 Pro-tip:</strong> When an order is placed or cancelled here, switch to
+            the <strong>Kitchen Display</strong> tab or keep both tabs in view to see the instant live card and audio
+            chime!
+          </div>
+        </div>
+
+        <!-- Smartphone Device Mockup -->
+        <div class="phone-mockup-wrapper">
+          <div class="phone-notch"></div>
+
+          <!-- WhatsApp Chat Header -->
+          <div class="wa-app-header">
+            <div class="wa-header-left">
+              <span style="font-size: 1.1rem; color: #8696a0;">←</span>
+              <div class="wa-avatar">👑</div>
+              <div class="wa-contact-info">
+                <div class="wa-contact-name">
+                  Royal Spice Bistro <span class="verified-icon">✓</span>
+                </div>
+                <div class="wa-contact-status">Official Business Account • Online</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 14px; color: #8696a0; font-size: 1.1rem;">
+              <span>📹</span>
+              <span>📞</span>
+              <span>⋮</span>
+            </div>
+          </div>
+
+          <!-- Chat Conversation Scroll Area -->
+          <div class="wa-chat-container" id="waChatFeed">
+            <div class="wa-date-pill">TODAY</div>
+            <div
+              style="font-size: 0.68rem; text-align: center; color: #8696a0; background: #182229; padding: 6px 12px; border-radius: 8px; margin: 4px 10px 10px 10px;">
+              🔒 Messages and calls are end-to-end encrypted. No one outside of this chat can read them.
+            </div>
+
+            <!-- Typing indicator -->
+            <div class="wa-typing-indicator" id="waTypingIndicator">
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+            </div>
+          </div>
+
+          <!-- WhatsApp Message Input Footer -->
+          <div class="wa-input-footer">
+            <span style="font-size: 1.2rem; color: #8696a0; cursor: pointer;">😊</span>
+            <span style="font-size: 1.2rem; color: #8696a0; cursor: pointer;">📎</span>
+            <input type="text" class="wa-input-box" id="waInputBox" placeholder="Type a message or tap button..."
+              autocomplete="off">
+            <button class="wa-send-btn" id="waSendBtn" title="Send Message">➤</button>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==============================================
+         VIEW 3: TABLES & QR CODE STUDIO
+         ============================================== -->
+    <section class="view-section" id="view-tables">
+      <div class="studio-actions-bar">
+        <div>
+          <h2 style="font-size: 1.6rem; font-weight: 700;">🏷️ Table Management & QR Studio</h2>
+          <p style="color: var(--text-secondary); font-size: 0.88rem; margin-top: 4px;">
+            Generate, customize, and print unique QR code tent cards for every table.
+          </p>
+        </div>
+
+        <button class="btn-primary" id="btnPrintAllQRs">
+          🖨️ Print All Table Tent Cards
+        </button>
+      </div>
+
+      <!-- Tables Grid -->
+      <div class="tables-layout-grid" id="tablesLayoutGrid">
+        <!-- Rendered dynamically by qr-studio.js -->
+      </div>
+
+      <!-- Printable Tent Cards Container (Styled via @media print) -->
+      <div class="tent-card-print-view" id="tentCardPrintView"></div>
+    </section>
+
+    <!-- ==============================================
+         VIEW 4: MENU MANAGEMENT
+         ============================================== -->
+    <section class="view-section" id="view-menu">
+      <div class="menu-controls-header">
+        <div>
+          <h2 style="font-size: 1.6rem; font-weight: 700;">📖 Restaurant Menu & Stock Control</h2>
+          <p style="color: var(--text-secondary); font-size: 0.88rem; margin-top: 4px;">
+            Update prices or toggle Out of Stock. Sold out dishes are instantly hidden from the WhatsApp Bot!
+          </p>
+        </div>
+
+        <button class="btn-primary" onclick="app.openModal('modalAddDish')">
+          ➕ Add New Dish
+        </button>
+      </div>
+
+      <!-- Menu Items Grid -->
+      <div class="menu-items-grid" id="menuItemsGrid">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- ==============================================
+         VIEW 5: ANALYTICS & ORDER HISTORY
+         ============================================== -->
+    <section class="view-section" id="view-analytics">
+      <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 1.6rem; font-weight: 700;">📊 Order Analytics & History</h2>
+        <p style="color: var(--text-secondary); font-size: 0.88rem; margin-top: 4px;">
+          Daily dining performance metrics, turnaround speed, and completed guest bills.
+        </p>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div class="stats-cards-row">
+        <div class="stat-kpi-card">
+          <div class="stat-kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">💵</div>
+          <div class="stat-kpi-info">
+            <h4>Today's Sales</h4>
+            <div class="kpi-value" id="statTodayRevenue">₹0</div>
+          </div>
+        </div>
+
+        <div class="stat-kpi-card">
+          <div class="stat-kpi-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">🧾</div>
+          <div class="stat-kpi-info">
+            <h4>Total Orders</h4>
+            <div class="kpi-value" id="statTodayOrders">0</div>
+          </div>
+        </div>
+
+        <div class="stat-kpi-card">
+          <div class="stat-kpi-icon" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6;">⏱️</div>
+          <div class="stat-kpi-info">
+            <h4>Avg Prep Time</h4>
+            <div class="kpi-value" id="statAvgPrep">15m</div>
+          </div>
+        </div>
+
+        <div class="stat-kpi-card">
+          <div class="stat-kpi-icon" style="background: rgba(16, 185, 129, 0.15); color: #34d399;">✅</div>
+          <div class="stat-kpi-info">
+            <h4>Completed</h4>
+            <div class="kpi-value" id="statCompletedOrders">0</div>
+          </div>
+        </div>
+
+        <div class="stat-kpi-card">
+          <div class="stat-kpi-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">🛑</div>
+          <div class="stat-kpi-info">
+            <h4>Cancelled</h4>
+            <div class="kpi-value" id="statCancelledOrders">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History Table -->
+      <div class="history-table-container">
+        <table class="styled-table">
+          <thead>
+            <tr>
+              <th>Order ID</th>
+              <th>Table</th>
+              <th>Items Ordered</th>
+              <th>Bill Amount</th>
+              <th>Status</th>
+              <th>Time</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <!-- Rendered by app.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ==============================================
+         VIEW 6: WHATSAPP CLOUD API SETUP
+         ============================================== -->
+    <section class="view-section" id="view-setup">
+      <div
+        style="max-width: 860px; margin: 0 auto; background: var(--bg-card); padding: 32px; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+        <h2
+          style="font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+          <span>⚙️</span> Connecting Official Meta WhatsApp Cloud API
+        </h2>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; margin-bottom: 24px;">
+          The system includes a fully functional WhatsApp Simulator for immediate local testing. When you are ready to
+          connect a real phone number for customer orders via Meta WhatsApp Cloud API, follow these three simple steps:
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+
+          <div
+            style="background: rgba(15,23,42,0.6); padding: 18px; border-radius: 12px; border-left: 4px solid var(--accent-whatsapp);">
+            <h4 style="font-size: 1rem; margin-bottom: 6px; color: #fff;">Step 1: Meta Developer App</h4>
+            <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.5;">
+              Create an app at <a href="https://developers.facebook.com" target="_blank"
+                style="color: #38bdf8;">developers.facebook.com</a> &gt; Select "Business" type &gt; Add the
+              <strong>WhatsApp</strong> product.
+            </p>
+          </div>
+
+          <div
+            style="background: rgba(15,23,42,0.6); padding: 18px; border-radius: 12px; border-left: 4px solid #3b82f6;">
+            <h4 style="font-size: 1rem; margin-bottom: 6px; color: #fff;">Step 2: Configure Webhook URL</h4>
+            <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.5; margin-bottom: 8px;">
+              Expose your server port (e.g. using ngrok or deploying to Render/AWS) and enter the webhook URL in Meta
+              App &gt; WhatsApp &gt; Configuration:
+            </p>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <code
+                style="background: #0f172a; padding: 8px 12px; border-radius: 6px; color: #34d399; font-size: 0.85rem; flex: 1;">
+                https://&lt;your-domain&gt;/webhook
+              </code>
+            </div>
+            <div style="margin-top: 8px; font-size: 0.82rem; color: #94a3b8;">
+              Verify Token: <strong style="color: #fff;">RESTAURANT_ORDER_BOT_SECRET_2026</strong>
+            </div>
+          </div>
+
+          <div
+            style="background: rgba(15,23,42,0.6); padding: 18px; border-radius: 12px; border-left: 4px solid #f59e0b;">
+            <h4 style="font-size: 1rem; margin-bottom: 6px; color: #fff;">Step 3: Subscribe to "messages" webhook field
+            </h4>
+            <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.5;">
+              Under Webhook fields, click <strong>Subscribe</strong> for <code>messages</code>. Now every customer
+              scanning the table QR code will interact with this bot!
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==============================================
+       MODALS
+       ============================================== -->
+
+  <!-- Receipt Modal -->
+  <div class="modal-overlay" id="modalReceipt">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 700;">Customer Bill Receipt</h3>
+        <button class="btn-icon" onclick="app.closeModal('modalReceipt')">✕</button>
+      </div>
+      <div class="modal-body" id="receiptModalContent">
+        <!-- Rendered by app.js -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="app.closeModal('modalReceipt')">Close</button>
+        <button class="btn-primary" onclick="window.print()">🖨️ Print Bill</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Dish Modal -->
+  <div class="modal-overlay" id="modalAddDish">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 700;">Add New Food Dish</h3>
+        <button class="btn-icon" onclick="app.closeModal('modalAddDish')">✕</button>
+      </div>
+      <form id="formAddDish">
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="control-field" style="margin-bottom: 0;">
+            <label>Dish Name</label>
+            <input type="text" name="dishName" required placeholder="e.g. Crispy Honey Chilli Potato">
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <div class="control-field" style="flex: 1; margin-bottom: 0;">
+              <label>Category</label>
+              <select name="dishCategory">
+                <option value="Starters">Starters</option>
+                <option value="Main Course">Main Course</option>
+                <option value="Breads & Rice">Breads & Rice</option>
+                <option value="Beverages">Beverages</option>
+                <option value="Desserts">Desserts</option>
+              </select>
+            </div>
+            <div class="control-field" style="flex: 1; margin-bottom: 0;">
+              <label>Price (₹)</label>
+              <input type="number" name="dishPrice" required placeholder="240">
+            </div>
+          </div>
+          <div style="display: flex; gap: 20px; margin-top: 4px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer;">
+              <input type="checkbox" name="dishIsVeg" checked style="width: 16px; height: 16px;">
+              <span>🟢 Pure Veg</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer;">
+              <input type="checkbox" name="dishIsSpicy" style="width: 16px; height: 16px;">
+              <span>🌶️ Spicy Dish</span>
+            </label>
+          </div>
+          <div class="control-field" style="margin-bottom: 0;">
+            <label>Description</label>
+            <input type="text" name="dishDesc" placeholder="Brief ingredients or preparation note">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="app.closeModal('modalAddDish')">Cancel</button>
+          <button type="submit" class="btn-primary">Save to Menu</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/js/audio.js"></script>
+  <script src="/js/simulator.js"></script>
+  <script src="/js/qr-studio.js"></script>
+  <script src="/js/app.js"></script>
+
+</body>
+
+</html>

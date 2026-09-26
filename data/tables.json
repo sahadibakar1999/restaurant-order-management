@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1,
+    "number": 1,
+    "capacity": 2,
+    "status": "cooking",
+    "currentOrderId": "ORD-265687",
+    "lastActive": "2026-09-25T11:21:52.656Z"
+  },
+  {
+    "id": 2,
+    "number": 2,
+    "capacity": 4,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": null
+  },
+  {
+    "id": 3,
+    "number": 3,
+    "capacity": 4,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": null
+  },
+  {
+    "id": 4,
+    "number": 4,
+    "capacity": 6,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": null
+  },
+  {
+    "id": 5,
+    "number": 5,
+    "capacity": 2,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": "2026-09-25T10:55:16.376Z"
+  },
+  {
+    "id": 6,
+    "number": 6,
+    "capacity": 8,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": null
+  },
+  {
+    "id": 7,
+    "number": 7,
+    "capacity": 4,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": null
+  },
+  {
+    "id": 8,
+    "number": 8,
+    "capacity": 4,
+    "status": "vacant",
+    "currentOrderId": null,
+    "lastActive": null
+  }
+]
